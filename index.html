@@ -1,0 +1,978 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#F5F4F8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="레슨 출석">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<title>레슨 출석</title>
+<style>
+:root{
+  --bg:#F5F4F8;--card:#fff;--ink:#1E1B2E;--sub:#6E6A80;--faint:#A19DB0;--line:#ECEAF2;
+  --acc:#6A4BE0;--acc-soft:#EFEBFD;--acc-ink:#4B30B8;
+  --red:#E5484D;--red-soft:#FDECEC;--orange:#D9760A;--orange-soft:#FFF2E0;
+  --green:#1F9D63;--green-soft:#E4F5EC;--blue:#2F7FD8;--blue-soft:#E8F1FC;--gray:#8A8798;--gray-soft:#F0EFF4;
+  --r:16px;--safe-b:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Pretendard","Apple SD Gothic Neo","Noto Sans KR",sans-serif;-webkit-text-size-adjust:100%}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none;padding:0}
+#app{max-width:560px;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 8px) 16px calc(96px + var(--safe-b))}
+.top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding:14px 2px 12px}
+.top h1{margin:0;font-size:26px;letter-spacing:-.5px}
+.top .sub{margin:0;color:var(--sub);font-size:13px}
+.card{background:var(--card);border-radius:var(--r);padding:16px;margin-bottom:12px;box-shadow:0 1px 2px rgba(30,27,46,.04)}
+.card h3,.sec-h{margin:0 0 10px;font-size:15px;font-weight:700}
+.sec-h{display:flex;justify-content:space-between;align-items:center;margin:20px 2px 8px;font-size:14px;color:var(--sub)}
+.muted{color:var(--sub);font-size:13px}
+.faint{color:var(--faint);font-size:12px}
+.err{color:var(--red);font-size:13px;min-height:18px;margin:8px 0 0}
+label{display:block;font-size:13px;color:var(--sub);margin:12px 0 6px}
+input[type=text],input[type=password],input[type=date],input[type=number],input:not([type]),textarea,select{
+  width:100%;border:1px solid var(--line);background:#FBFAFD;border-radius:12px;padding:12px 13px;outline:none;font-size:16px}
+input:focus,textarea:focus{border-color:var(--acc);background:#fff}
+input:disabled{color:var(--sub);background:var(--gray-soft)}
+textarea{min-height:84px;resize:vertical}
+.btn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:14px;border-radius:14px;font-weight:700;font-size:16px;background:var(--gray-soft);color:var(--ink)}
+.btn.primary{background:var(--acc);color:#fff}
+.btn.danger{background:var(--red-soft);color:var(--red)}
+.btn.soft{background:var(--acc-soft);color:var(--acc-ink)}
+.btn:disabled{opacity:.5}
+.btn+.btn{margin-top:8px}
+.btns{display:flex;gap:8px;margin-top:16px}.btns .btn{margin:0;flex:1;width:auto;min-width:0}
+.btns .btn.grow{flex:2}
+.link{color:var(--acc-ink);font-size:14px;padding:8px 2px;font-weight:600}
+.mini{padding:8px 14px;border-radius:999px;background:var(--acc);color:#fff;font-weight:700;font-size:14px;white-space:nowrap}
+.mini.ghost{background:var(--acc-soft);color:var(--acc-ink)}
+.pill{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap;vertical-align:1px}
+.c-green{background:var(--green-soft);color:var(--green)}.c-blue{background:var(--blue-soft);color:var(--blue)}
+.c-orange{background:var(--orange-soft);color:var(--orange)}.c-red{background:var(--red-soft);color:var(--red)}
+.c-gray{background:var(--gray-soft);color:var(--gray)}.c-acc{background:var(--acc-soft);color:var(--acc-ink)}
+/* rows */
+.list{background:var(--card);border-radius:var(--r);overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;padding:13px 14px;border-top:1px solid var(--line);width:100%;text-align:left}
+.row:first-child{border-top:0}
+.row .main{flex:1;min-width:0}
+.row .name{font-weight:700;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.row .meta{color:var(--sub);font-size:13px;margin-top:1px}
+.row .note{margin-top:6px;font-size:13px;background:var(--bg);border-radius:10px;padding:8px 10px;color:var(--ink);white-space:pre-wrap;word-break:break-word}
+.avatar{width:40px;height:40px;border-radius:50%;background:var(--acc-soft);color:var(--acc-ink);display:grid;place-items:center;font-weight:800;flex:none}
+.avatar.off{background:var(--gray-soft);color:var(--gray)}
+.chev{color:var(--faint);font-size:20px}
+.empty{text-align:center;color:var(--sub);padding:32px 16px}
+/* alerts */
+.alert{border-radius:var(--r);padding:14px 16px;margin-bottom:12px}
+.alert.red{background:var(--red-soft)}.alert.orange{background:var(--orange-soft)}.alert.acc{background:var(--acc-soft)}
+.alert .t{font-weight:800;margin-bottom:6px}
+.alert.red .t{color:var(--red)}.alert.orange .t{color:var(--orange)}.alert.acc .t{color:var(--acc-ink)}
+.alert .ar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid rgba(0,0,0,.05)}
+.alert .ar:first-of-type{border-top:0}
+.alert .ar span{font-size:14px}
+/* date nav */
+.dnav{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.dnav input{flex:1;text-align:center;font-weight:700;background:var(--card);border:0;padding:11px}
+.icbtn{width:44px;height:44px;border-radius:12px;background:var(--card);font-size:18px;color:var(--sub);flex:none}
+.txtbtn{height:44px;padding:0 14px;border-radius:12px;background:var(--card);font-weight:700;color:var(--acc-ink);flex:none}
+/* hero */
+.hero{text-align:center;padding:22px 16px}
+.hero .big{font-size:40px;font-weight:800;letter-spacing:-1px;line-height:1.1}
+.hero .big small{font-size:18px;font-weight:700;margin-left:2px}
+.hero .cap{color:var(--sub);font-size:13px;margin-top:6px}
+.dots{display:flex;justify-content:center;gap:8px;margin:14px 0 4px;flex-wrap:wrap}
+.dot{width:22px;height:22px;border-radius:50%;border:2px solid var(--acc);display:grid;place-items:center;font-size:11px;font-weight:800;color:var(--acc)}
+.dot.on{background:var(--acc);color:#fff}
+.dot.over{border-color:var(--red);background:var(--red);color:#fff}
+.bar{height:8px;background:var(--acc-soft);border-radius:8px;overflow:hidden;margin:14px 0 4px}.bar i{display:block;height:100%;background:var(--acc)}
+.code{font:800 30px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:4px;text-align:center;background:var(--acc-soft);color:var(--acc-ink);border-radius:12px;padding:14px;margin:6px 0 10px}
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.stat{background:var(--card);border-radius:14px;padding:12px}
+.stat b{display:block;font-size:18px;letter-spacing:-.3px}
+.stat span{font-size:12px;color:var(--sub)}
+.stat.wide{grid-column:1/-1}
+.stat.wide b{font-size:24px}
+/* segmented */
+.seg{display:flex;background:var(--gray-soft);border-radius:12px;padding:4px;gap:4px}
+.seg button{flex:1;padding:9px;border-radius:9px;font-weight:700;color:var(--sub);font-size:14px}
+.seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.06)}
+/* status grid */
+.stg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stg button{padding:12px 4px;border-radius:12px;font-weight:700;font-size:14px;border:2px solid transparent}
+.stg button.sel{border-color:currentColor}
+.hint{font-size:13px;color:var(--sub);margin:8px 2px 0}
+/* toggle */
+.tg{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+.tg:first-of-type{border-top:0}
+.tg small{display:block;color:var(--sub);font-size:12px}
+.sw{appearance:none;-webkit-appearance:none;width:50px;height:30px;border-radius:30px;background:#DCDAE4;position:relative;flex:none;transition:.2s;margin:0}
+.sw:after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.sw:checked{background:var(--acc)}.sw:checked:after{left:23px}
+.kv{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:14px}
+.kv:first-of-type{border-top:0}.kv span:first-child{color:var(--sub)}
+/* tab bar */
+.tabs{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.94);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--line);padding:6px 8px calc(6px + var(--safe-b));display:flex;justify-content:center;z-index:5}
+.tabs .in{display:flex;max-width:560px;width:100%}
+.tabs button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;font-size:11px;font-weight:700;color:var(--faint);position:relative}
+.tabs button svg{width:24px;height:24px}
+.tabs button.on{color:var(--acc)}
+.tabs .badge{position:absolute;top:2px;left:calc(50% + 6px);background:var(--red);color:#fff;font-size:10px;min-width:16px;height:16px;border-radius:8px;display:grid;place-items:center;padding:0 4px}
+.back{font-size:16px;font-weight:700;color:var(--acc-ink);padding:6px 0}
+/* sheet */
+.sheet{position:fixed;inset:0;z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.sheet.hidden{display:none}
+.sheet-bg{position:absolute;inset:0;background:rgba(20,18,32,.4);animation:fade .2s}
+.sheet-body{position:relative;background:var(--card);width:100%;max-width:560px;border-radius:22px 22px 0 0;padding:10px 18px calc(18px + var(--safe-b));max-height:90vh;overflow:auto;animation:up .22s ease-out}
+.sheet-body:before{content:"";display:block;width:40px;height:5px;border-radius:5px;background:var(--line);margin:0 auto 12px}
+.sheet-body h3{margin:0 0 4px;font-size:18px}
+@keyframes up{from{transform:translateY(40px);opacity:.5}}@keyframes fade{from{opacity:0}}
+#toast{position:fixed;left:50%;bottom:calc(90px + var(--safe-b));transform:translate(-50%,20px);background:#1E1B2E;color:#fff;padding:12px 18px;border-radius:14px;font-size:14px;font-weight:600;opacity:0;pointer-events:none;transition:.25s;z-index:30;max-width:calc(100% - 32px);text-align:center}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+/* login */
+.brand{text-align:center;padding:40px 0 24px}
+.logo{width:72px;height:72px;border-radius:22px;background:linear-gradient(140deg,#7C5CF0,#5A3CCB);margin:0 auto 14px;display:grid;place-items:center;box-shadow:0 8px 24px rgba(106,75,224,.3)}
+.logo svg{width:40px;height:40px}
+.brand h1{margin:0;font-size:26px}
+.brand p{margin:4px 0 0;color:var(--sub)}
+.hello{background:var(--acc-soft);border-radius:12px;padding:12px 14px;margin-top:14px;font-size:14px}
+.demo{border:1.5px dashed #C9BFF5;background:#FAF8FF}
+.check-big{display:flex;flex-direction:column;align-items:center;gap:2px;padding:20px}
+.check-big .l{font-size:19px;font-weight:800}.check-big .s{font-size:13px;opacity:.85;font-weight:600}
+.done-box{text-align:center;padding:18px;border-radius:var(--r);background:var(--green-soft);color:var(--green);font-weight:800;margin-bottom:12px}
+.done-box small{display:block;font-weight:600;color:var(--sub);margin-top:2px}
+.spin{display:grid;place-items:center;height:60vh;color:var(--sub)}
+</style>
+</head>
+<body>
+<div id="app"><div class="spin">불러오는 중…</div></div>
+<div id="sheet" class="sheet hidden"><div class="sheet-bg" data-act="closeSheet"></div><div class="sheet-body" id="sheetBody"></div></div>
+<div id="toast"></div>
+
+<script type="module">
+/* ============================================================
+   레슨 출석 — 설정
+   FIREBASE_CONFIG: 레슨 시간표 앱(#01) index.html의 firebaseConfig를 그대로 복사
+   ADMIN_EMAILS   : 원장(수정 권한) 계정 이메일. 보안 규칙의 목록과 똑같이
+   둘 다 비워 두면 '데모 모드'(이 기기에만 저장)로 동작
+   ============================================================ */
+const FIREBASE_CONFIG = null;   // 예: { apiKey:"...", authDomain:"lesson-schedule-16d8b.firebaseapp.com", projectId:"lesson-schedule-16d8b", ... }
+const ADMIN_EMAILS = [];        // 예: ["teacher@example.com", "me@example.com"]
+const FB_VER = '13.2.0';
+const ROOT = 'apps/attend';              // Firestore 안에서 이 앱의 자리 (#01의 schedules와 안 겹침)
+const LOGIN_DOMAIN = 'lesson-attend.app'; // 레슨생 계정용 가상 이메일 도메인 (메일은 안 보냄)
+const APP_VER = '1.0.0';
+const CLOUD = !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey);
+
+/* ---------- 작은 도구 ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = n => String(n).padStart(2, '0');
+const dstr = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const today = () => dstr(new Date());
+const addDays = (s, n) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return dstr(d); };
+const DOW = '일월화수목금토';
+const fmtD = s => { if (!s) return ''; const d = new Date(s + 'T00:00:00'); return `${d.getMonth()+1}월 ${d.getDate()}일 (${DOW[d.getDay()]})`; };
+const fmtS = s => { if (!s) return ''; const d = new Date(s + 'T00:00:00'); return `${d.getMonth()+1}.${d.getDate()} (${DOW[d.getDay()]})`; };
+const ymOf = s => s.slice(0, 7);
+const fmtYM = ym => `${ym.slice(0,4)}년 ${+ym.slice(5)}월`;
+const shiftYM = (ym, n) => { const d = new Date(+ym.slice(0,4), +ym.slice(5) - 1 + n, 1); return `${d.getFullYear()}-${pad(d.getMonth()+1)}`; };
+const won = n => (Number(n) || 0).toLocaleString('ko-KR') + '원';
+const ts = v => v == null ? Date.now() : (typeof v === 'number' ? v : (v.toMillis ? v.toMillis() : 0));
+const byName = (a, b) => a.name.localeCompare(b.name, 'ko');
+const normName = s => String(s || '').normalize('NFC').replace(/\s+/g, '');
+const nameKey = s => 'n' + Array.from(new TextEncoder().encode(normName(s)), b => b.toString(16).padStart(2, '0')).join('');
+const CODE_CH = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const genCode = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), b => CODE_CH[b % CODE_CH.length]).join('');
+const codeEmail = code => `a-${code.toLowerCase()}@${LOGIN_DOMAIN}`;
+const localId = () => 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+/* ---------- 상태 ---------- */
+const DEF_SETTINGS = { passSize: 4, price: 0, deductAbsent: true, deductLate: true };
+const S = {
+  ready: false, user: null, role: null, sid: null, err: '',
+  settings: { ...DEF_SETTINGS }, students: {}, records: {}, passes: {},
+  tab: 'today', date: today(), month: ymOf(today()), view: null, showEnded: false,
+  loginTab: 'login', invite: null, signingUp: false,
+};
+const ST = {
+  present: { t: '출석',     c: 'green'  },
+  makeup:  { t: '보강',     c: 'blue'   },
+  late:    { t: '당일취소', c: 'orange' },
+  absent:  { t: '결석',     c: 'red'    },
+  cancel:  { t: '미리취소', c: 'gray'   },
+};
+const deducts = st => st === 'present' || st === 'makeup' || (st === 'absent' && S.settings.deductAbsent) || (st === 'late' && S.settings.deductLate);
+const stHint = st => deducts(st) ? '수강권 1회가 차감돼요' : '차감되지 않아요';
+
+/* ---------- 수강권 계산 (저장은 최소로, 남은 횟수는 매번 계산) ---------- */
+// 결제한 순서대로 수강권을 늘어놓고, 차감되는 기록을 날짜 순서대로 채워 넣는다.
+// 그래서 결제일이 사람마다 달라도, 원장이 기록을 고쳐도 자동으로 맞는다.
+function ledger(sid) {
+  const passes = Object.values(S.passes).filter(p => p.sid === sid)
+    .sort((a, b) => (a.paidAt || '').localeCompare(b.paidAt || '') || ts(a.createdAt) - ts(b.createdAt))
+    .map(p => ({ ...p, total: Math.max(0, +p.total || 0), used: 0 }));
+  const recs = Object.values(S.records).filter(r => r.sid === sid)
+    .sort((a, b) => a.date.localeCompare(b.date) || ts(a.createdAt) - ts(b.createdAt));
+  const tag = {}; let pi = 0, used = 0;
+  for (const r of recs) {
+    if (!deducts(r.status)) { tag[r.id] = { kind: 'free' }; continue; }
+    used++;
+    while (pi < passes.length && passes[pi].used >= passes[pi].total) pi++;
+    if (pi < passes.length) { passes[pi].used++; tag[r.id] = { kind: 'pass', n: passes[pi].used, total: passes[pi].total }; }
+    else tag[r.id] = { kind: 'unpaid' };
+  }
+  const total = passes.reduce((a, p) => a + p.total, 0);
+  const remaining = total - used;
+  const cur = passes.find(p => p.used < p.total) || passes[passes.length - 1] || null;
+  return { passes, recs, tag, total, used, remaining, unpaid: Math.max(0, used - total), cur,
+           needPay: remaining <= 0, last: remaining === 1 };
+}
+function remainText(L) {
+  if (!L.passes.length && !L.used) return '수강권 없음';
+  if (L.unpaid > 0) return `미결제 ${L.unpaid}회`;
+  if (L.remaining <= 0) return '수강권 다 씀';
+  return `${L.remaining}회 남음`;
+}
+function summary(L) {
+  return L.cur ? `${L.cur.used}/${L.cur.total}회 · ${remainText(L)}` : remainText(L);
+}
+function badges(L, s) {
+  let h = '';
+  if (s && s.active === false) h += '<span class="pill c-gray">수강 종료</span>';
+  else if (L.needPay) h += '<span class="pill c-red">결제 필요</span>';
+  else if (L.last) h += '<span class="pill c-orange">마지막 1회</span>';
+  return h;
+}
+function tagText(t) {
+  if (!t) return '';
+  if (t.kind === 'pass') return `${t.n}/${t.total}회차`;
+  if (t.kind === 'unpaid') return '미결제 회차';
+  return '차감 없음';
+}
+function dotsHTML(L) {
+  const c = L.cur;
+  if (!c) return '';
+  if (c.total > 12) return `<div class="bar"><i style="width:${Math.min(100, c.used / c.total * 100)}%"></i></div>`;
+  let h = '<div class="dots">';
+  for (let i = 1; i <= c.total; i++) h += `<span class="dot ${i <= c.used ? 'on' : ''}">${i}</span>`;
+  for (let i = 1; i <= Math.min(L.unpaid, 4); i++) h += `<span class="dot over">!</span>`;
+  return h + '</div>';
+}
+
+/* ---------- 저장소: Firebase 또는 데모(이 기기) ---------- */
+let fb = {}, auth = null, db = null, unsubs = [];
+const LS_DATA = 'at.demo', LS_SESS = 'at.demoSession';
+function saveLocal() {
+  try { localStorage.setItem(LS_DATA, JSON.stringify({ settings: S.settings, students: S.students, records: S.records, passes: S.passes })); } catch {}
+}
+function newId(coll) { return CLOUD ? fb.doc(fb.collection(db, ROOT, coll)).id : localId(); }
+const now = () => CLOUD ? fb.serverTimestamp() : Date.now();
+async function put(coll, id, data) {
+  if (CLOUD) { await fb.setDoc(fb.doc(db, ROOT, coll, id), data, { merge: true }); return; }
+  S[coll][id] = { ...(S[coll][id] || {}), ...data, id }; saveLocal(); scheduleRender();
+}
+async function del(coll, id) {
+  if (CLOUD) { await fb.deleteDoc(fb.doc(db, ROOT, coll, id)); return; }
+  delete S[coll][id]; saveLocal(); scheduleRender();
+}
+async function cloudSet(coll, id, data) { if (CLOUD) await fb.setDoc(fb.doc(db, ROOT, coll, id), data); }
+async function cloudDel(coll, id) { if (CLOUD && id) await fb.deleteDoc(fb.doc(db, ROOT, coll, id)).catch(() => {}); }
+async function saveSettings(patch) {
+  S.settings = { ...S.settings, ...patch };
+  if (CLOUD) await fb.setDoc(fb.doc(db, ROOT, 'meta', 'settings'), patch, { merge: true });
+  else saveLocal();
+  scheduleRender();
+}
+
+/* ---------- Firebase 연결 ---------- */
+async function initCloud() {
+  const base = `https://www.gstatic.com/firebasejs/${FB_VER}/`;
+  const [A, Au, F] = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-auth.js'), import(base + 'firebase-firestore.js')]);
+  fb = { ...Au, ...F };
+  const app = A.initializeApp(FIREBASE_CONFIG);
+  auth = Au.getAuth(app);
+  try { db = F.initializeFirestore(app, { localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }) }); }
+  catch { db = F.getFirestore(app); }
+  Au.onAuthStateChanged(auth, u => { if (!S.signingUp) startSession(u); });
+}
+function stopSubs() { unsubs.forEach(f => { try { f(); } catch {} }); unsubs = []; }
+function clearData() { S.students = {}; S.records = {}; S.passes = {}; S.settings = { ...DEF_SETTINGS }; }
+async function startSession(u) {
+  stopSubs(); clearData();
+  S.user = u; S.role = null; S.sid = null; S.err = ''; S.view = null;
+  if (!u) { S.ready = true; render(); return; }
+  const email = (u.email || '').toLowerCase();
+  try {
+    if (ADMIN_EMAILS.map(e => e.toLowerCase()).includes(email)) { S.role = 'admin'; subAdmin(); }
+    else {
+      const snap = await fb.getDoc(fb.doc(db, ROOT, 'users', u.uid));
+      if (snap.exists()) { S.role = 'student'; S.sid = snap.data().sid; subStudent(); }
+      else S.role = 'none';
+    }
+  } catch (e) { S.role = 'none'; S.err = errMsg(e); }
+  S.ready = true; render();
+}
+function listen(target, onData) {
+  unsubs.push(fb.onSnapshot(target, onData, e => toast('불러오기 실패: ' + errMsg(e))));
+}
+function mapSnap(snap) { const m = {}; snap.forEach(d => m[d.id] = { ...d.data(), id: d.id }); return m; }
+function subSettings() {
+  listen(fb.doc(db, ROOT, 'meta', 'settings'), d => { S.settings = { ...DEF_SETTINGS, ...(d.data() || {}) }; scheduleRender(); });
+}
+const cleaned = new Set();
+function subAdmin() {
+  subSettings();
+  for (const c of ['students', 'records', 'passes'])
+    listen(fb.collection(db, ROOT, c), snap => { S[c] = mapSnap(snap); if (c === 'students') cleanupInvites(); scheduleRender(); });
+}
+function cleanupInvites() { // 가입을 마친 레슨생의 초대코드는 지운다
+  for (const s of Object.values(S.students)) if (s.uid && s.code && !cleaned.has(s.id)) {
+    cleaned.add(s.id); cloudDel('invites', s.code); fb.updateDoc(fb.doc(db, ROOT, 'students', s.id), { code: null }).catch(() => {});
+  }
+}
+function subStudent() {
+  const sid = S.sid;
+  subSettings();
+  listen(fb.doc(db, ROOT, 'students', sid), d => { S.students = d.exists() ? { [sid]: { ...d.data(), id: sid } } : {}; scheduleRender(); });
+  for (const c of ['records', 'passes'])
+    listen(fb.query(fb.collection(db, ROOT, c), fb.where('sid', '==', sid)), snap => { S[c] = mapSnap(snap); scheduleRender(); });
+}
+
+/* ---------- 데모 모드 ---------- */
+function demoSeed() {
+  const d = n => addDays(today(), -n);
+  const st = {
+    s1: { name: '김민지', memo: '화 19:00', uid: 'demo-s1' },
+    s2: { name: '이서연', memo: '목 20:00', uid: 'demo-s2' },
+    s3: { name: '박하준', memo: '토 14:00', uid: null, code: 'HJ7K2Q' },
+  };
+  S.students = {}; S.records = {}; S.passes = {};
+  let i = 1;
+  for (const [id, s] of Object.entries(st)) S.students[id] = { id, ...s, loginKey: nameKey(s.name), active: true, createdAt: i++ };
+  const P = (id, sid, paidAt, amount) => S.passes[id] = { id, sid, paidAt, total: 4, amount, memo: '계좌이체', createdAt: i++ };
+  P('p0', 's1', d(57), 200000); P('p1', 's1', d(29), 200000); P('p2', 's2', d(22), 200000); P('p3', 's3', d(2), 200000);
+  const R = (sid, n, status, note = '', by = 'admin') => { const id = 'r' + i; S.records[id] = { id, sid, date: d(n), status, note, by, createdAt: i++ }; };
+  [56, 49, 42, 35].forEach(n => R('s1', n, 'present'));
+  R('s1', 28, 'present', '호흡 기초 · 숙제: 립트릴 5분'); R('s1', 21, 'present', '「봄날」 1절 음정 체크', 'student');
+  R('s1', 14, 'present', '고음 믹스보이스 연습'); R('s1', 7, 'late', '당일 취소 (몸살)');
+  R('s2', 21, 'present', '발성 테스트 · 음역 확인'); R('s2', 14, 'cancel', '여행으로 미리 취소');
+  R('s2', 13, 'makeup', '보강 · 비브라토 연습'); R('s2', 7, 'present', '숙제: 녹음해서 들어보기', 'student');
+  S.settings = { ...DEF_SETTINGS, price: 200000 };
+  saveLocal();
+}
+function initDemo() {
+  try {
+    const d = JSON.parse(localStorage.getItem(LS_DATA) || 'null');
+    if (d) { S.settings = { ...DEF_SETTINGS, ...d.settings }; S.students = d.students || {}; S.records = d.records || {}; S.passes = d.passes || {}; }
+    else demoSeed();
+  } catch { demoSeed(); }
+  try { const s = JSON.parse(localStorage.getItem(LS_SESS) || 'null'); if (s) demoLoginAs(s.role, s.sid, true); } catch {}
+  S.ready = true; render();
+}
+function demoLoginAs(role, sid, silent) {
+  S.role = role; S.sid = sid || null; S.view = null; S.tab = 'today';
+  S.user = { email: role === 'admin' ? '원장 (데모)' : (S.students[sid]?.name || '') };
+  try { localStorage.setItem(LS_SESS, JSON.stringify({ role, sid })); } catch {}
+  if (!silent) { render(); scrollTo(0, 0); }
+}
+
+/* ---------- 메시지 ---------- */
+const ERR = {
+  'auth/invalid-credential': '아이디 또는 비밀번호가 맞지 않아요',
+  'auth/wrong-password': '아이디 또는 비밀번호가 맞지 않아요',
+  'auth/user-not-found': '아이디 또는 비밀번호가 맞지 않아요',
+  'auth/invalid-email': '이메일 형식이 맞지 않아요',
+  'auth/weak-password': '비밀번호는 6자 이상으로 정해 주세요',
+  'auth/email-already-in-use': '이미 가입을 마친 초대코드예요. 로그인 탭에서 이름으로 로그인해 주세요',
+  'auth/too-many-requests': '시도가 너무 많았어요. 잠시 후 다시 해 주세요',
+  'auth/network-request-failed': '인터넷 연결을 확인해 주세요',
+  'permission-denied': '권한이 없어요',
+  'unavailable': '인터넷 연결을 확인해 주세요',
+  'app/no-user': '가입된 아이디가 없어요. 처음이라면 "초대코드로 가입"을 눌러 주세요',
+  'app/bad-code': '초대코드를 다시 확인해 주세요',
+};
+const errMsg = e => ERR[e?.code] || e?.message || '문제가 생겼어요';
+let toastT;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 2800); }
+
+/* ---------- 화면 그리기 ---------- */
+let rq = 0;
+function scheduleRender() { if (rq) return; rq = requestAnimationFrame(() => { rq = 0; render(); }); }
+function render() {
+  const app = $('#app');
+  if (!S.ready) return;
+  if (S.role === 'admin') app.innerHTML = adminView();
+  else if (S.role === 'student') app.innerHTML = studentView();
+  else if (S.role === 'none') app.innerHTML = noRoleView();
+  else app.innerHTML = loginView();
+}
+const ICON = {
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  today: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M8 3v4M16 3v4M8.5 13.5l2.5 2.5 4.5-4.5"/></svg>',
+  people: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 19.5c.8-3.3 3.4-5 6.5-5s5.7 1.7 6.5 5"/><circle cx="17" cy="9" r="2.6"/><path d="M17.5 14.6c2.2.3 3.6 1.9 4 4.4"/></svg>',
+  won: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l3.5 12L12 8l4.5 10L20 6M3 11h18"/></svg>',
+  gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M2.5 12h3M18.5 12h3M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1"/></svg>',
+};
+
+/* --- 로그인 --- */
+function loginView() {
+  const demo = !CLOUD ? `
+    <div class="card demo">
+      <h3>데모 모드</h3>
+      <p class="muted" style="margin:0 0 12px">Firebase를 연결하기 전이라 데이터가 이 기기에만 저장돼요. 화면을 둘러보세요.</p>
+      <button class="btn primary" data-act="demoAdmin">원장 화면으로 보기</button>
+      ${Object.values(S.students).filter(s => s.uid).sort(byName).map(s => `<button class="btn soft" data-act="demoStudent" data-sid="${s.id}">레슨생 ${esc(s.name)} 님으로 보기</button>`).join('')}
+      ${Object.values(S.students).filter(s => !s.uid && s.code).slice(0, 1).map(s => `<p class="faint" style="margin:10px 0 0">가입 체험: "초대코드로 가입"에 <b>${esc(s.code)}</b> 입력</p>`).join('')}
+    </div>` : '';
+  const isJoin = S.loginTab === 'join';
+  let form;
+  if (!isJoin) form = `
+      <label for="lid">아이디</label>
+      <input id="lid" type="text" placeholder="레슨생은 이름 · 원장님은 이메일" autocomplete="username" autocapitalize="off">
+      <label for="lpw">비밀번호</label>
+      <input id="lpw" type="password" autocomplete="current-password">
+      <div style="height:16px"></div>
+      <button class="btn primary" data-act="login">로그인</button>
+      <button class="link" data-act="forgot">비밀번호를 잊었어요</button>`;
+  else if (!S.invite) form = `
+      <label for="jcode">초대코드</label>
+      <input id="jcode" type="text" placeholder="원장쌤께 받은 6자리 코드" maxlength="6" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase;letter-spacing:3px;font-weight:700">
+      <div style="height:16px"></div>
+      <button class="btn primary" data-act="checkCode">확인</button>`;
+  else form = `
+      <div class="hello"><b>${esc(S.invite.name)}</b> 님, 반가워요!<br>아이디는 <b>${esc(S.invite.name)}</b>(으)로 정해져 있어요. 비밀번호만 정해 주세요.</div>
+      <label>아이디</label>
+      <input type="text" value="${esc(S.invite.name)}" autocomplete="username" readonly disabled>
+      <label for="jpw">비밀번호 (6자 이상)</label>
+      <input id="jpw" type="password" autocomplete="new-password">
+      <label for="jpw2">비밀번호 확인</label>
+      <input id="jpw2" type="password" autocomplete="new-password">
+      <div style="height:16px"></div>
+      <button class="btn primary" data-act="join">가입하고 시작하기</button>
+      <button class="link" data-act="resetCode">다른 코드 입력</button>`;
+  return `
+    <div class="brand"><div class="logo">${ICON.check}</div><h1>레슨 출석</h1><p>출석과 수강권을 한 곳에서</p></div>
+    ${demo}
+    <div class="card">
+      <div class="seg"><button class="${!isJoin ? 'on' : ''}" data-act="ltab" data-v="login">로그인</button><button class="${isJoin ? 'on' : ''}" data-act="ltab" data-v="join">초대코드로 가입</button></div>
+      ${form}
+      <p class="err" id="lerr"></p>
+    </div>`;
+}
+function noRoleView() {
+  return `
+    <div class="brand"><div class="logo">${ICON.check}</div><h1>레슨 출석</h1></div>
+    <div class="card">
+      <h3>연결된 레슨생 정보가 없어요</h3>
+      <p class="muted">${esc(S.err || '이 계정은 원장 계정도, 가입한 레슨생 계정도 아니에요. 원장쌤께 새 초대코드를 받아 가입해 주세요.')}</p>
+      <p class="faint">${esc(S.user?.email || '')}</p>
+      <button class="btn" data-act="logout">로그아웃</button>
+    </div>`;
+}
+
+/* --- 원장 --- */
+const activeStudents = () => Object.values(S.students).filter(s => s.active !== false).sort(byName);
+function adminView() {
+  const L = Object.fromEntries(Object.keys(S.students).map(id => [id, ledger(id)]));
+  const payCount = activeStudents().filter(s => L[s.id].needPay).length;
+  let body;
+  if (S.tab === 'students' && S.view && S.students[S.view]) body = studentDetail(S.view, L[S.view]);
+  else if (S.tab === 'students') body = studentsTab(L);
+  else if (S.tab === 'money') body = moneyTab(L);
+  else if (S.tab === 'settings') body = settingsTab();
+  else body = todayTab(L);
+  const T = (k, label, icon, badge) => `<button class="${S.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${icon}${label}${badge ? `<span class="badge">${badge}</span>` : ''}</button>`;
+  return body + `<nav class="tabs"><div class="in">${T('today', '출석', ICON.today, payCount)}${T('students', '레슨생', ICON.people)}${T('money', '정산', ICON.won)}${T('settings', '설정', ICON.gear)}</div></nav>`;
+}
+function alertsHTML(L) {
+  const act = activeStudents();
+  const pay = act.filter(s => L[s.id].needPay), last = act.filter(s => !L[s.id].needPay && L[s.id].last);
+  let h = '';
+  if (pay.length) h += `<div class="alert red"><div class="t">💳 결제가 필요해요 · ${pay.length}명</div>${pay.map(s => `
+      <div class="ar"><span><b>${esc(s.name)}</b> · ${esc(remainText(L[s.id]))}</span><button class="mini" data-act="openPay" data-sid="${s.id}">결제 확인</button></div>`).join('')}</div>`;
+  if (last.length) h += `<div class="alert orange"><div class="t">다음 레슨이 마지막 회차예요 · ${last.length}명</div>${last.map(s => `
+      <div class="ar"><span><b>${esc(s.name)}</b> · ${esc(summary(L[s.id]))}</span><button class="mini ghost" data-act="openStudent" data-sid="${s.id}">보기</button></div>`).join('')}</div>`;
+  return h;
+}
+function todayTab(L) {
+  const act = activeStudents();
+  const isToday = S.date === today();
+  const recOn = sid => Object.values(S.records).filter(r => r.sid === sid && r.date === S.date).sort((a, b) => ts(a.createdAt) - ts(b.createdAt));
+  const done = act.filter(s => recOn(s.id).length).length;
+  const rows = act.map(s => {
+    const rs = recOn(s.id), r = rs[0], l = L[s.id];
+    const right = r
+      ? `<span class="pill c-${ST[r.status].c}">${ST[r.status].t}${rs.length > 1 ? ' +' + (rs.length - 1) : ''}</span>`
+      : `<button class="mini" data-act="quick" data-sid="${s.id}">출석</button>`;
+    return `<div class="row" data-act="openRec" data-sid="${s.id}" ${r ? `data-rid="${r.id}"` : ''} role="button">
+        <div class="avatar">${esc(s.name.slice(-2, -1) || s.name[0])}</div>
+        <div class="main"><div class="name">${esc(s.name)} ${badges(l, s)}</div>
+          <div class="meta">${esc(summary(l))}${r && r.by === 'student' ? ' · 본인 체크' : ''}${r && r.note ? ' · 📝' : ''}</div></div>
+        ${right}</div>`;
+  }).join('');
+  return `
+    <header class="top"><div><p class="sub">${isToday ? '오늘' : ''} ${fmtD(S.date)}</p><h1>출석</h1></div>
+      <span class="muted">${done}/${act.length}명 기록</span></header>
+    ${alertsHTML(L)}
+    <div class="dnav">
+      <button class="icbtn" data-act="dateShift" data-n="-1" aria-label="전날">‹</button>
+      <input type="date" value="${S.date}" data-ch="date" aria-label="날짜">
+      <button class="icbtn" data-act="dateShift" data-n="1" aria-label="다음날">›</button>
+      ${isToday ? '' : '<button class="txtbtn" data-act="dateToday">오늘</button>'}
+    </div>
+    ${act.length ? `<div class="list">${rows}</div>
+      <p class="faint" style="margin:8px 4px">[출석]을 누르면 바로 기록돼요. 이름을 누르면 보강·취소·결석과 레슨 노트를 적을 수 있어요.</p>`
+      : `<div class="card empty">아직 레슨생이 없어요<br><br><button class="btn primary" data-act="addStudent">레슨생 추가</button></div>`}`;
+}
+function studentsTab(L) {
+  const all = Object.values(S.students).sort(byName);
+  const shown = all.filter(s => S.showEnded || s.active !== false);
+  const ended = all.length - all.filter(s => s.active !== false).length;
+  const rows = shown.map(s => {
+    const l = L[s.id];
+    return `<button class="row" data-act="openStudent" data-sid="${s.id}">
+      <div class="avatar ${s.active === false ? 'off' : ''}">${esc(s.name.slice(-2, -1) || s.name[0])}</div>
+      <div class="main"><div class="name">${esc(s.name)} ${badges(l, s)}</div>
+        <div class="meta">${esc(summary(l))}${s.uid ? '' : ' · <span style="color:var(--acc-ink)">가입 전</span>'}${s.memo ? ' · ' + esc(s.memo) : ''}</div></div>
+      <span class="chev">›</span></button>`;
+  }).join('');
+  return `
+    <header class="top"><h1>레슨생</h1><button class="mini" data-act="addStudent">+ 추가</button></header>
+    ${shown.length ? `<div class="list">${rows}</div>` : `<div class="card empty">레슨생을 추가하면 초대코드가 만들어져요</div>`}
+    ${ended ? `<button class="link" data-act="toggleEnded" style="margin-top:8px">${S.showEnded ? '수강 종료한 레슨생 숨기기' : `수강 종료한 레슨생 보기 (${ended})`}</button>` : ''}`;
+}
+function studentDetail(sid, L) {
+  const s = S.students[sid];
+  const recs = [...L.recs].reverse();
+  const recRows = recs.map(r => `
+    <button class="row" data-act="openRec" data-sid="${sid}" data-rid="${r.id}" style="align-items:flex-start">
+      <div class="main">
+        <div class="name"><span>${fmtS(r.date)}</span><span class="pill c-${ST[r.status].c}">${ST[r.status].t}</span>
+          <span class="faint">${tagText(L.tag[r.id])}${r.by === 'student' ? ' · 본인 체크' : ''}</span></div>
+        ${r.note ? `<div class="note">${esc(r.note)}</div>` : ''}
+      </div><span class="chev">›</span></button>`).join('');
+  const passRows = [...L.passes].reverse().map(p => `
+    <button class="row" data-act="openPay" data-sid="${sid}" data-pid="${p.id}">
+      <div class="main"><div class="name">${fmtS(p.paidAt)} · ${p.total}회권</div>
+        <div class="meta">${won(p.amount)} · ${p.used}/${p.total} 사용${p.memo ? ' · ' + esc(p.memo) : ''}</div></div>
+      <span class="chev">›</span></button>`).join('');
+  const account = s.uid
+    ? `<div class="kv"><span>상태</span><b style="color:var(--green)">가입 완료</b></div>
+       <div class="kv"><span>아이디</span><b>${esc(s.name)}</b></div>
+       <button class="link" data-act="reissue" data-sid="${sid}">비밀번호를 잊었대요 → 새 초대코드 만들기</button>`
+    : `<p class="muted" style="margin:0">레슨생에게 이 코드를 보내 주세요. "초대코드로 가입"에서 입력하고 비밀번호만 정하면 돼요. 아이디는 <b>${esc(s.name)}</b>(으)로 고정돼요.</p>
+       <div class="code">${esc(s.code || '------')}</div>
+       <div class="btns" style="margin-top:0"><button class="btn soft" data-act="shareInvite" data-sid="${sid}">초대 메시지 보내기</button><button class="btn" data-act="copyCode" data-sid="${sid}">코드 복사</button></div>`;
+  return `
+    <header class="top"><button class="back" data-act="back">‹ 레슨생</button><button class="link" data-act="editInfo" data-sid="${sid}">정보 수정</button></header>
+    <div class="card hero">
+      <div style="font-size:20px;font-weight:800">${esc(s.name)} ${badges(L, s)}</div>
+      ${s.memo ? `<div class="muted">${esc(s.memo)}</div>` : ''}
+      ${dotsHTML(L)}
+      <div class="cap">${L.cur ? `현재 수강권 ${L.cur.used}/${L.cur.total}회 · ${fmtS(L.cur.paidAt)} 결제` : '등록된 수강권이 없어요'} · <b style="color:${L.needPay ? 'var(--red)' : 'var(--ink)'}">${esc(remainText(L))}</b></div>
+      <div style="height:14px"></div>
+      <button class="btn ${L.needPay ? 'primary' : 'soft'}" data-act="openPay" data-sid="${sid}">결제 확인 · 새 수강권 시작</button>
+    </div>
+    <div class="card"><h3>계정</h3>${account}</div>
+    <div class="sec-h"><span>출석 기록 ${recs.length}</span><button class="link" data-act="openRec" data-sid="${sid}" data-new="1">+ 기록 추가</button></div>
+    ${recs.length ? `<div class="list">${recRows}</div>` : '<div class="card empty">아직 기록이 없어요</div>'}
+    <div class="sec-h"><span>결제 기록 ${L.passes.length}</span></div>
+    ${L.passes.length ? `<div class="list">${passRows}</div>` : '<div class="card empty">아직 결제 기록이 없어요</div>'}
+    <div style="height:16px"></div>
+    <button class="btn" data-act="toggleActive" data-sid="${sid}">${s.active === false ? '다시 수강 시작' : '수강 종료로 표시'}</button>
+    <button class="btn danger" data-act="delStudent" data-sid="${sid}">레슨생 삭제</button>`;
+}
+function moneyTab(L) {
+  const ym = S.month;
+  const pays = Object.values(S.passes).filter(p => p.paidAt && ymOf(p.paidAt) === ym).sort((a, b) => b.paidAt.localeCompare(a.paidAt));
+  const sum = pays.reduce((a, p) => a + (+p.amount || 0), 0);
+  const recs = Object.values(S.records).filter(r => ymOf(r.date) === ym);
+  const lessons = recs.filter(r => deducts(r.status)).length;
+  const per = Object.values(S.students).map(s => {
+    const rs = recs.filter(r => r.sid === s.id);
+    const c = k => rs.filter(r => r.status === k).length;
+    return { s, n: rs.length, att: c('present') + c('makeup'), mk: c('makeup'), off: c('late') + c('absent') + c('cancel') };
+  }).filter(x => x.n).sort((a, b) => byName(a.s, b.s));
+  const unpaidAll = activeStudents().filter(s => L[s.id].needPay);
+  return `
+    <header class="top"><h1>정산</h1></header>
+    <div class="dnav">
+      <button class="icbtn" data-act="monthShift" data-n="-1" aria-label="이전 달">‹</button>
+      <div style="flex:1;text-align:center;font-weight:800;font-size:17px">${fmtYM(ym)}</div>
+      <button class="icbtn" data-act="monthShift" data-n="1" aria-label="다음 달">›</button>
+    </div>
+    <div class="stats">
+      <div class="stat wide"><span>이번 달 결제 합계</span><b>${won(sum)}</b></div>
+      <div class="stat"><b>${pays.length}건</b><span>결제</span></div>
+      <div class="stat"><b>${lessons}회</b><span>진행 레슨</span></div>
+      <div class="stat"><b>${unpaidAll.length}명</b><span>지금 결제 필요</span></div>
+    </div>
+    <div class="sec-h"><span>결제 내역</span></div>
+    ${pays.length ? `<div class="list">${pays.map(p => `
+      <button class="row" data-act="openPay" data-sid="${p.sid}" data-pid="${p.id}">
+        <div class="main"><div class="name">${esc(S.students[p.sid]?.name || '(삭제됨)')}</div>
+        <div class="meta">${fmtS(p.paidAt)} · ${p.total}회권${p.memo ? ' · ' + esc(p.memo) : ''}</div></div>
+        <b>${won(p.amount)}</b></button>`).join('')}</div>` : '<div class="card empty">이 달에는 결제 기록이 없어요</div>'}
+    <div class="sec-h"><span>레슨생별 출석</span></div>
+    ${per.length ? `<div class="list">${per.map(x => `
+      <div class="row"><div class="main"><div class="name">${esc(x.s.name)}</div>
+        <div class="meta">출석 ${x.att}회${x.mk ? ` (보강 ${x.mk})` : ''}${x.off ? ` · 취소·결석 ${x.off}회` : ''}</div></div></div>`).join('')}</div>` : '<div class="card empty">이 달에는 출석 기록이 없어요</div>'}`;
+}
+function settingsTab() {
+  const st = S.settings;
+  return `
+    <header class="top"><h1>설정</h1></header>
+    <div class="card"><h3>계정</h3>
+      <div class="kv"><span>로그인</span><b>${esc(S.user?.email || '')}</b></div>
+      <div class="kv"><span>권한</span><b>원장 (수정 가능)</b></div>
+      <div style="height:8px"></div>
+      <button class="btn" data-act="logout">로그아웃</button></div>
+    <div class="card"><h3>수강권 기본값</h3>
+      <p class="muted" style="margin:0">결제 확인할 때 처음 채워지는 값이에요. 사람마다 바꿀 수 있어요.</p>
+      <label>횟수</label><input type="number" inputmode="numeric" min="1" max="100" value="${st.passSize}" data-ch="passSize">
+      <label>금액 (원)</label><input type="number" inputmode="numeric" min="0" step="1000" value="${st.price || ''}" placeholder="0" data-ch="price"></div>
+    <div class="card"><h3>차감 규칙</h3>
+      <div class="tg"><div>출석 · 보강<small>항상 1회 차감</small></div><span class="pill c-green">차감</span></div>
+      <div class="tg"><div>미리 취소<small>약속대로 미리 알려 준 취소</small></div><span class="pill c-gray">차감 안 함</span></div>
+      <div class="tg"><div>당일 취소<small>켜면 1회 차감</small></div><input type="checkbox" class="sw" data-ch="deductLate" ${st.deductLate ? 'checked' : ''}></div>
+      <div class="tg"><div>결석 (연락 없이)<small>켜면 1회 차감</small></div><input type="checkbox" class="sw" data-ch="deductAbsent" ${st.deductAbsent ? 'checked' : ''}></div>
+      <p class="faint" style="margin:8px 0 0">규칙을 바꾸면 지난 기록까지 다시 계산돼요.</p></div>
+    <div class="card"><h3>백업</h3>
+      <button class="btn" data-act="exportData">전체 데이터 내보내기 (JSON)</button></div>
+    ${!CLOUD ? `<div class="card demo"><h3>데모 모드</h3>
+      <p class="muted" style="margin:0 0 10px">Firebase 연결 전이라 이 기기에만 저장돼요.</p>
+      <button class="btn soft" data-act="logout">레슨생 화면 보러 가기</button>
+      <button class="btn danger" data-act="demoReset">데모 데이터 처음으로</button></div>` : ''}
+    <p class="faint" style="text-align:center">레슨 출석 v${APP_VER}</p>`;
+}
+
+/* --- 레슨생 --- */
+function studentView() {
+  const sid = S.sid, s = S.students[sid];
+  if (!s) return `<div class="spin">불러오는 중…</div>`;
+  const L = ledger(sid), t = today();
+  const todayRec = L.recs.find(r => r.date === t);
+  let notice = '';
+  if (L.needPay && (L.passes.length || L.used)) notice = `<div class="alert red"><div class="t">💳 결제가 필요해요</div><div style="font-size:14px">${L.unpaid > 0 ? `수강권보다 ${L.unpaid}회 더 들었어요.` : '이번 수강권을 모두 사용했어요.'} 다음 레슨 전에 원장쌤께 결제해 주세요.</div></div>`;
+  else if (L.last) notice = `<div class="alert orange"><div class="t">다음 레슨이 마지막 회차예요</div><div style="font-size:14px">이번 수강권이 1회 남았어요. 연장은 원장쌤께 말씀해 주세요.</div></div>`;
+  const big = (!L.passes.length && !L.used) ? '<div class="big" style="font-size:26px">수강권 준비 중</div>'
+    : L.needPay ? `<div class="big" style="color:var(--red)">${L.unpaid > 0 ? `미결제 ${L.unpaid}<small>회</small>` : '0<small>회 남음</small>'}</div>`
+    : `<div class="big">${L.remaining}<small>회 남음</small></div>`;
+  let check;
+  if (s.active === false) check = `<div class="card empty">수강이 종료됐어요. 기록은 계속 볼 수 있어요.</div>`;
+  else if (todayRec) check = `<div class="done-box">오늘 ${ST[todayRec.status].t} 완료 ✓<small>${fmtD(t)}${todayRec.by === 'admin' ? ' · 원장쌤이 기록' : ''}</small></div>`;
+  else check = `<button class="btn primary check-big" data-act="checkin"><span class="l">오늘 출석하기</span><span class="s">${fmtD(t)}</span></button><div style="height:12px"></div>`;
+  const rows = [...L.recs].reverse().map(r => `
+    <div class="row" style="align-items:flex-start"><div class="main">
+      <div class="name"><span>${fmtS(r.date)}</span><span class="pill c-${ST[r.status].c}">${ST[r.status].t}</span><span class="faint">${tagText(L.tag[r.id])}</span></div>
+      ${r.note ? `<div class="note">📝 ${esc(r.note)}</div>` : ''}</div></div>`).join('');
+  return `
+    <header class="top"><div><p class="sub">안녕하세요</p><h1>${esc(s.name)} 님</h1></div>${!CLOUD ? '<span class="pill c-acc">데모</span>' : ''}</header>
+    ${notice}
+    <div class="card hero">${big}${dotsHTML(L)}
+      <div class="cap">${L.cur ? `이번 수강권 ${L.cur.used}/${L.cur.total}회 사용 · ${fmtS(L.cur.paidAt)} 결제` : '원장쌤이 수강권을 등록하면 여기에 보여요'}</div></div>
+    ${check}
+    <div class="sec-h"><span>레슨 기록 · 노트</span></div>
+    ${L.recs.length ? `<div class="list">${rows}</div>` : '<div class="card empty">아직 기록이 없어요</div>'}
+    ${L.passes.length ? `<div class="sec-h"><span>결제 기록</span></div><div class="list">${[...L.passes].reverse().map(p => `
+      <div class="row"><div class="main"><div class="name">${fmtS(p.paidAt)} · ${p.total}회권</div><div class="meta">${p.used}/${p.total} 사용</div></div></div>`).join('')}</div>` : ''}
+    <div style="height:20px"></div>
+    <button class="btn" data-act="logout">로그아웃</button>`;
+}
+
+/* ---------- 시트(아래에서 올라오는 창) ---------- */
+let SH = {};
+function openSheet(html, state = {}) { SH = state; $('#sheetBody').innerHTML = html; $('#sheet').classList.remove('hidden'); }
+function closeSheet() { $('#sheet').classList.add('hidden'); $('#sheetBody').innerHTML = ''; }
+// 브라우저 확인창 대신 시트로 묻기 (홈 화면 앱·미리보기에서도 똑같이 동작)
+function ask(msg, ok = '확인', danger = false) {
+  return new Promise(res => openSheet(`
+    <p style="white-space:pre-wrap;font-size:16px;font-weight:600;margin:4px 0 0;line-height:1.55">${esc(msg)}</p>
+    <div class="btns"><button class="btn" data-act="askNo">취소</button><button class="btn ${danger ? 'danger' : 'primary'} grow" data-act="askYes">${esc(ok)}</button></div>`, { ...SH, _ask: res }));
+}
+const val = id => ($('#' + id)?.value ?? '').trim();
+
+function recSheet(sid, rid) {
+  const s = S.students[sid], r = rid ? S.records[rid] : null;
+  const st = r ? r.status : 'present';
+  openSheet(`
+    <h3>${esc(s.name)} · ${r ? '기록 수정' : '기록 추가'}</h3>
+    <p class="muted" style="margin:0 0 12px">${esc(summary(ledger(sid)))}${r?.by === 'student' ? ' · 레슨생이 직접 체크한 기록' : ''}</p>
+    <div class="stg">${Object.entries(ST).map(([k, v]) => `<button class="c-${v.c} ${k === st ? 'sel' : ''}" data-act="pickSt" data-v="${k}">${v.t}</button>`).join('')}</div>
+    <p class="hint" id="sthint">${stHint(st)}</p>
+    <label for="rdate">날짜</label><input id="rdate" type="date" value="${r ? r.date : S.date}">
+    <label for="rnote">레슨 노트 <span class="faint">레슨생도 볼 수 있어요</span></label>
+    <textarea id="rnote" placeholder="오늘 한 곡, 연습할 것, 다음 목표…">${esc(r?.note || '')}</textarea>
+    <div class="btns">${r ? '<button class="btn danger" data-act="delRec">삭제</button>' : ''}<button class="btn primary grow" data-act="saveRec">저장</button></div>`,
+    { sid, rid, st });
+}
+function payNotice(sid, before, after) {
+  const n = S.students[sid]?.name || '';
+  if (after <= 0 && before > 0) toast(`${n} 님 수강권을 다 썼어요 · 결제가 필요해요`);
+  else if (after === 1 && before !== 1) toast(`${n} 님 다음 레슨이 마지막 회차예요`);
+}
+function paySheet(sid, pid) {
+  const s = S.students[sid], p = pid ? S.passes[pid] : null, L = ledger(sid);
+  openSheet(`
+    <h3>${p ? '결제 기록 수정' : '결제 확인'} · ${esc(s?.name || '')}</h3>
+    <p class="muted" style="margin:0 0 4px">${p ? '횟수를 바꾸면 남은 횟수가 다시 계산돼요.' : (L.unpaid > 0 ? `저장하면 새 수강권이 시작되고, 미결제 ${L.unpaid}회가 먼저 이 수강권에서 차감돼요.` : '저장하면 새 수강권이 시작돼요.')}</p>
+    <label for="pdate">결제일</label><input id="pdate" type="date" value="${p ? p.paidAt : today()}">
+    <label for="ptotal">횟수</label><input id="ptotal" type="number" inputmode="numeric" min="1" max="100" value="${p ? p.total : S.settings.passSize}">
+    <label for="pamt">금액 (원)</label><input id="pamt" type="number" inputmode="numeric" min="0" step="1000" value="${p ? (p.amount || 0) : (S.settings.price || '')}" placeholder="0">
+    <label for="pmemo">메모</label><input id="pmemo" type="text" value="${esc(p?.memo || '')}" placeholder="예: 계좌이체, 카드">
+    <div class="btns">${p ? '<button class="btn danger" data-act="delPay">삭제</button>' : ''}<button class="btn primary grow" data-act="savePay">${p ? '저장' : '결제 확인'}</button></div>`,
+    { sid, pid });
+}
+function studentSheet(sid) {
+  const s = sid ? S.students[sid] : null;
+  openSheet(`
+    <h3>${s ? '정보 수정' : '레슨생 추가'}</h3>
+    <label for="sname">이름 ${s?.uid ? '<span class="faint">가입 후에는 아이디라서 바꿀 수 없어요</span>' : '<span class="faint">= 로그인 아이디</span>'}</label>
+    <input id="sname" type="text" value="${esc(s?.name || '')}" placeholder="예: 김민지" ${s?.uid ? 'disabled' : ''}>
+    <label for="smemo">메모</label><input id="smemo" type="text" value="${esc(s?.memo || '')}" placeholder="예: 화 19:00, 취미반">
+    ${s ? '' : `
+    <div class="tg" style="margin-top:14px;border:0"><div>첫 수강권 결제 완료<small>${S.settings.passSize}회 · ${won(S.settings.price)} (오늘)</small></div><input type="checkbox" class="sw" id="sfirst" checked></div>`}
+    <p class="err" id="serr"></p>
+    <div class="btns"><button class="btn" data-act="closeSheet">취소</button><button class="btn primary grow" data-act="saveStudent">${s ? '저장' : '추가하고 초대코드 받기'}</button></div>`,
+    { sid });
+}
+
+/* ---------- 동작 ---------- */
+async function addRecord(sid, data) {
+  const before = ledger(sid).remaining;
+  const id = newId('records');
+  await put('records', id, { sid, date: data.date, status: data.status, note: data.note || '', by: data.by, createdAt: now() });
+  payNotice(sid, before, before - (deducts(data.status) ? 1 : 0));
+}
+function lerr(msg) { const e = $('#lerr'); if (e) e.textContent = msg; }
+async function doLogin() {
+  const id = val('lid'), pw = $('#lpw').value;
+  if (!id || !pw) return lerr('아이디와 비밀번호를 입력해 주세요');
+  if (!CLOUD) {
+    const s = Object.values(S.students).find(x => x.loginKey === nameKey(id) && x.uid);
+    if (!s) return lerr('데모에서는 위의 버튼으로 둘러보거나, 가입한 레슨생 이름으로 로그인해 주세요');
+    if (s.demoPw && s.demoPw !== pw) return lerr(ERR['auth/invalid-credential']);
+    return demoLoginAs('student', s.id);
+  }
+  let email = id.toLowerCase();
+  if (!id.includes('@')) {
+    const snap = await fb.getDoc(fb.doc(db, ROOT, 'logins', nameKey(id)));
+    if (!snap.exists()) throw { code: 'app/no-user' };
+    email = snap.data().email;
+  }
+  await fb.signInWithEmailAndPassword(auth, email, pw);
+}
+async function checkCode() {
+  const code = val('jcode').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length !== 6) return lerr('6자리 초대코드를 입력해 주세요');
+  if (!CLOUD) {
+    const s = Object.values(S.students).find(x => x.code === code && !x.uid);
+    if (!s) throw { code: 'app/bad-code' };
+    S.invite = { code, sid: s.id, name: s.name }; return render();
+  }
+  const snap = await fb.getDoc(fb.doc(db, ROOT, 'invites', code));
+  if (!snap.exists()) throw { code: 'app/bad-code' };
+  S.invite = { code, ...snap.data() }; render();
+}
+async function doJoin() {
+  const pw = $('#jpw').value, pw2 = $('#jpw2').value;
+  if (pw.length < 6) return lerr(ERR['auth/weak-password']);
+  if (pw !== pw2) return lerr('비밀번호가 서로 달라요');
+  const { sid, name, email } = S.invite;
+  if (!CLOUD) {
+    await put('students', sid, { uid: 'demo-' + sid, code: null, demoPw: pw });
+    S.invite = null; S.loginTab = 'login'; toast('가입 완료! 다음부터는 이름으로 로그인해요');
+    return demoLoginAs('student', sid);
+  }
+  S.signingUp = true;
+  try {
+    const cred = await fb.createUserWithEmailAndPassword(auth, email, pw);
+    const uid = cred.user.uid;
+    await fb.setDoc(fb.doc(db, ROOT, 'users', uid), { sid, name, createdAt: fb.serverTimestamp() });
+    await fb.updateDoc(fb.doc(db, ROOT, 'students', sid), { uid });
+    await fb.setDoc(fb.doc(db, ROOT, 'logins', nameKey(name)), { email, sid });
+    S.invite = null; S.loginTab = 'login';
+    toast('가입 완료! 다음부터는 이름으로 로그인해요');
+  } finally { S.signingUp = false; }
+  await startSession(auth.currentUser);
+}
+function inviteText(s) {
+  const url = location.origin + location.pathname;
+  return `[레슨 출석] ${s.name} 님 초대코드: ${s.code}\n\n1) ${url} 열기\n2) "초대코드로 가입" → 코드 입력\n3) 비밀번호만 정하면 끝! (아이디는 "${s.name}")\n\n아이폰은 Safari 공유 버튼 → "홈 화면에 추가"하면 앱처럼 쓸 수 있어요.`;
+}
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); toast('복사했어요'); }
+  catch { prompt('아래 내용을 복사해 주세요', t); }
+}
+async function saveStudent() {
+  const sid = SH.sid, s = sid ? S.students[sid] : null;
+  const name = s?.uid ? s.name : val('sname').replace(/\s+/g, ' '), memo = val('smemo');
+  const se = $('#serr');
+  if (!name) { se.textContent = '이름을 입력해 주세요'; return; }
+  const key = nameKey(name);
+  if (Object.values(S.students).some(x => x.id !== sid && x.loginKey === key)) { se.textContent = '같은 이름이 있어요. 구분되게 적어 주세요 (예: 김민지B)'; return; }
+  if (s) {
+    const patch = { memo };
+    if (!s.uid && name !== s.name) { patch.name = name; patch.loginKey = key; if (CLOUD && s.code) await fb.setDoc(fb.doc(db, ROOT, 'invites', s.code), { name }, { merge: true }); }
+    await put('students', sid, patch); closeSheet(); toast('저장했어요'); return;
+  }
+  const id = newId('students'), code = genCode(), email = codeEmail(code);
+  const first = $('#sfirst')?.checked;
+  await cloudSet('invites', code, { sid: id, name, email });
+  await put('students', id, { name, memo, loginKey: key, code, email, uid: null, active: true, createdAt: now() });
+  if (first) await put('passes', newId('passes'), { sid: id, paidAt: today(), total: S.settings.passSize, amount: S.settings.price || 0, memo: '', createdAt: now() });
+  closeSheet(); S.tab = 'students'; S.view = id; render(); scrollTo(0, 0);
+  toast('추가했어요 · 초대코드를 보내 주세요');
+}
+async function reissue(sid) {
+  const s = S.students[sid];
+  if (!(await ask(`${s.name} 님의 새 초대코드를 만들까요?\n\n지금 계정으로는 더 이상 로그인할 수 없고, 새 코드로 다시 가입해서 비밀번호를 정하면 돼요. 출석·결제 기록은 그대로예요.`, '확인', true))) return;
+  const code = genCode(), email = codeEmail(code);
+  if (CLOUD) {
+    await cloudDel('invites', s.code);
+    await cloudDel('users', s.uid);
+    await cloudDel('logins', s.loginKey);
+    await cloudSet('invites', code, { sid, name: s.name, email });
+    cleaned.delete(sid);
+  }
+  await put('students', sid, { code, email, uid: null, demoPw: null });
+  toast('새 초대코드를 만들었어요');
+}
+async function delStudent(sid) {
+  const s = S.students[sid];
+  if (!(await ask(`${s.name} 님과 출석·결제 기록을 모두 삭제할까요?\n되돌릴 수 없어요. 그만둔 거라면 "수강 종료로 표시"를 추천해요.`, '확인', true))) return;
+  for (const r of Object.values(S.records).filter(r => r.sid === sid)) await del('records', r.id);
+  for (const p of Object.values(S.passes).filter(p => p.sid === sid)) await del('passes', p.id);
+  if (CLOUD) { await cloudDel('invites', s.code); await cloudDel('users', s.uid); await cloudDel('logins', s.loginKey); }
+  await del('students', sid);
+  S.view = null; render(); toast('삭제했어요');
+}
+async function exportData() {
+  const clean = Object.fromEntries(Object.entries(S.students).map(([k, v]) => { const { demoPw, ...r } = v; return [k, r]; }));
+  const fix = o => JSON.parse(JSON.stringify(o, (k, v) => (v && typeof v === 'object' && 'seconds' in v && 'nanoseconds' in v) ? new Date(v.seconds * 1000).toISOString() : v));
+  const data = fix({ app: 'lesson-attend', version: APP_VER, exportedAt: new Date().toISOString(), settings: S.settings, students: clean, records: S.records, passes: S.passes });
+  const name = `레슨출석_백업_${today()}.json`;
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const file = new File([blob], name, { type: 'application/json' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+const ACT = {
+  closeSheet: () => { const r = SH._ask; closeSheet(); if (r) { delete SH._ask; r(false); } },
+  askYes: () => { const r = SH._ask; delete SH._ask; closeSheet(); r && r(true); },
+  askNo: () => { const r = SH._ask; delete SH._ask; closeSheet(); r && r(false); },
+  ltab: d => { S.loginTab = d.v; S.invite = null; render(); },
+  login: doLogin,
+  checkCode, join: doJoin,
+  resetCode: () => { S.invite = null; render(); },
+  forgot: async () => {
+    const id = val('lid');
+    if (CLOUD && id.includes('@')) { await fb.sendPasswordResetEmail(auth, id); return lerr('비밀번호 재설정 메일을 보냈어요'); }
+    lerr('레슨생은 원장쌤께 새 초대코드를 받아 다시 가입하면 돼요 (기록은 그대로). 원장님은 이메일을 적고 다시 눌러 주세요.');
+  },
+  demoAdmin: () => demoLoginAs('admin'),
+  demoStudent: d => demoLoginAs('student', d.sid),
+  logout: async () => {
+    if (!CLOUD) { try { localStorage.removeItem(LS_SESS); } catch {} S.role = null; S.sid = null; S.user = null; S.tab = 'today'; render(); scrollTo(0, 0); return; }
+    if (await ask('로그아웃할까요?', '로그아웃')) await fb.signOut(auth);
+  },
+  tab: d => { if (S.tab === d.v && S.view) S.view = null; S.tab = d.v; if (d.v !== 'students') S.view = null; render(); scrollTo(0, 0); },
+  dateShift: d => { S.date = addDays(S.date, +d.n); render(); },
+  dateToday: () => { S.date = today(); render(); },
+  monthShift: d => { S.month = shiftYM(S.month, +d.n); render(); },
+  openStudent: d => { S.tab = 'students'; S.view = d.sid; render(); scrollTo(0, 0); },
+  back: () => { S.view = null; render(); },
+  toggleEnded: () => { S.showEnded = !S.showEnded; render(); },
+  quick: async d => { await addRecord(d.sid, { date: S.date, status: 'present', by: 'admin' }); },
+  openRec: d => recSheet(d.sid, d.new ? null : d.rid),
+  pickSt: (d, b) => { SH.st = d.v; b.parentNode.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x === b)); $('#sthint').textContent = stHint(d.v); },
+  saveRec: async () => {
+    const { sid, rid, st } = SH, date = val('rdate'), note = val('rnote');
+    if (!date) return toast('날짜를 골라 주세요');
+    if (!rid) { closeSheet(); return addRecord(sid, { date, status: st, note, by: 'admin' }); }
+    const old = S.records[rid], before = ledger(sid).remaining;
+    await put('records', rid, { date, status: st, note });
+    closeSheet(); toast('저장했어요');
+    payNotice(sid, before, before - (deducts(st) ? 1 : 0) + (deducts(old.status) ? 1 : 0));
+  },
+  delRec: async () => { if (!(await ask('이 기록을 삭제할까요?', '확인', true))) return; await del('records', SH.rid); closeSheet(); toast('삭제했어요'); },
+  openPay: d => paySheet(d.sid, d.pid),
+  savePay: async () => {
+    const { sid, pid } = SH, paidAt = val('pdate'), total = Math.round(+val('ptotal')), amount = Math.round(+val('pamt') || 0), memo = val('pmemo');
+    if (!paidAt || !(total > 0)) return toast('결제일과 횟수를 확인해 주세요');
+    if (pid) await put('passes', pid, { paidAt, total, amount, memo });
+    else await put('passes', newId('passes'), { sid, paidAt, total, amount, memo, createdAt: now() });
+    closeSheet(); toast(pid ? '저장했어요' : `${S.students[sid]?.name} 님 ${total}회 수강권 시작!`);
+  },
+  delPay: async () => { if (!(await ask('이 결제 기록을 삭제할까요?\n남은 횟수가 다시 계산돼요.', '확인', true))) return; await del('passes', SH.pid); closeSheet(); toast('삭제했어요'); },
+  addStudent: () => studentSheet(null),
+  editInfo: d => studentSheet(d.sid),
+  saveStudent,
+  shareInvite: async d => {
+    const t = inviteText(S.students[d.sid]);
+    if (navigator.share) { try { await navigator.share({ text: t }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+    copyText(t);
+  },
+  copyCode: d => copyText(S.students[d.sid].code),
+  reissue: d => reissue(d.sid),
+  toggleActive: async d => { const s = S.students[d.sid]; await put('students', d.sid, { active: s.active === false }); toast(s.active === false ? '다시 수강 중으로 바꿨어요' : '수강 종료로 표시했어요'); },
+  delStudent: d => delStudent(d.sid),
+  exportData,
+  demoReset: async () => { if (!(await ask('데모 데이터를 처음 상태로 되돌릴까요?', '확인', true))) return; demoSeed(); render(); toast('처음 상태로 돌렸어요'); },
+  checkin: () => {
+    const L = ledger(S.sid), willDeduct = L.remaining;
+    openSheet(`
+      <h3>오늘 출석할까요?</h3>
+      <p class="muted">${fmtD(today())}</p>
+      ${L.passes.length ? `<div class="card" style="background:var(--bg);text-align:center;margin:12px 0 0"><span class="muted">남은 횟수</span><div style="font-size:24px;font-weight:800">${Math.max(0, willDeduct)}회 → <span style="color:${willDeduct - 1 <= 0 ? 'var(--red)' : 'var(--acc)'}">${Math.max(0, willDeduct - 1)}회</span></div></div>` : ''}
+      ${willDeduct - 1 <= 0 ? '<p class="hint" style="color:var(--red)">이번 출석으로 수강권을 다 써요. 원장쌤께 연장 결제를 말씀해 주세요.</p>' : ''}
+      <div class="btns"><button class="btn" data-act="closeSheet">취소</button><button class="btn primary grow" data-act="doCheckin">출석하기</button></div>`);
+  },
+  doCheckin: async () => {
+    if (ledger(S.sid).recs.some(r => r.date === today())) { closeSheet(); return toast('오늘은 이미 기록돼 있어요'); }
+    closeSheet();
+    const id = newId('records');
+    await put('records', id, { sid: S.sid, date: today(), status: 'present', by: 'student', note: '', createdAt: now() });
+    toast('출석했어요! 오늘도 화이팅 🎤');
+  },
+};
+const CH = {
+  date: t => { if (t.value) { S.date = t.value; render(); } },
+  passSize: t => { const n = Math.round(+t.value); if (n > 0) saveSettings({ passSize: n }); },
+  price: t => saveSettings({ price: Math.max(0, Math.round(+t.value || 0)) }),
+  deductLate: t => saveSettings({ deductLate: t.checked }),
+  deductAbsent: t => saveSettings({ deductAbsent: t.checked }),
+};
+
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const f = ACT[b.dataset.act]; if (!f) return;
+  e.preventDefault();
+  if (b.tagName === 'BUTTON') b.disabled = true;
+  try { await f(b.dataset, b, e); }
+  catch (err) { console.error(err); if ($('#lerr') && !S.role) lerr(errMsg(err)); else toast(errMsg(err)); }
+  finally { if (b.isConnected) b.disabled = false; }
+});
+document.addEventListener('change', e => { const t = e.target; if (t.dataset && t.dataset.ch && CH[t.dataset.ch]) CH[t.dataset.ch](t); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || !e.target.matches('input')) return;
+  const id = e.target.id;
+  if (id === 'lpw' || id === 'lid') ACT.login().catch(err => lerr(errMsg(err)));
+  else if (id === 'jcode') checkCode().catch(err => lerr(errMsg(err)));
+});
+// 날짜가 바뀐 채로 앱을 다시 열면 '오늘'을 새로
+document.addEventListener('visibilitychange', () => { if (!document.hidden && S.role) { const t = today(); if (S._lastDay && S._lastDay !== t && S.date === S._lastDay) S.date = t; S._lastDay = t; scheduleRender(); } });
+S._lastDay = today();
+
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+if (CLOUD) initCloud().catch(e => { S.ready = true; S.role = 'none'; S.err = 'Firebase 연결 실패: ' + errMsg(e); render(); });
+else initDemo();
+</script>
+</body>
+</html>
