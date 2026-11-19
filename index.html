@@ -160,7 +160,14 @@ textarea{min-height:84px;resize:vertical}
    ADMIN_EMAILS   : 원장(수정 권한) 계정 이메일. 보안 규칙의 목록과 똑같이
    둘 다 비워 두면 '데모 모드'(이 기기에만 저장)로 동작
    ============================================================ */
-const FIREBASE_CONFIG = null;   // 예: { apiKey:"...", authDomain:"lesson-schedule-16d8b.firebaseapp.com", projectId:"lesson-schedule-16d8b", ... }
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyADJYGE5xhU0FigvOs8wiOhSZVNfDtCojc",
+  authDomain: "lesson-schedule-16d8b.firebaseapp.com",
+  projectId: "lesson-schedule-16d8b",
+  storageBucket: "lesson-schedule-16d8b.firebasestorage.app",
+  messagingSenderId: "964353771273",
+  appId: "1:964353771273:web:24126480953b64343d35d8"
+};   // 예: { apiKey:"...", authDomain:"lesson-schedule-16d8b.firebaseapp.com", projectId:"lesson-schedule-16d8b", ... }
 const ADMIN_EMAILS = [];        // 예: ["teacher@example.com", "me@example.com"]
 const FB_VER = '13.2.0';
 const ROOT = 'apps/attend';              // Firestore 안에서 이 앱의 자리 (#01의 schedules와 안 겹침)
