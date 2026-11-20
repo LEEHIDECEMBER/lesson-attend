@@ -50,6 +50,15 @@ textarea{min-height:84px;resize:vertical}
 .link{color:var(--acc-ink);font-size:14px;padding:8px 2px;font-weight:600}
 .mini{padding:8px 14px;border-radius:999px;background:var(--acc);color:#fff;font-weight:700;font-size:14px;white-space:nowrap}
 .mini.ghost{background:var(--acc-soft);color:var(--acc-ink)}
+.act{min-width:76px;height:40px;padding:0 14px;border-radius:999px;font-weight:700;font-size:15px;display:inline-flex;align-items:center;justify-content:center;gap:4px;flex:none;white-space:nowrap}
+.act.go{background:var(--acc);color:#fff}
+.act.c-green{background:var(--green-soft);color:var(--green)}.act.c-blue{background:var(--blue-soft);color:var(--blue)}
+.act.c-orange{background:var(--orange-soft);color:var(--orange)}.act.c-red{background:var(--red-soft);color:var(--red)}.act.c-gray{background:var(--gray-soft);color:var(--gray)}
+.act svg{width:16px;height:16px}
+.avatar.c-green{background:var(--green-soft);color:var(--green)}.avatar.c-blue{background:var(--blue-soft);color:var(--blue)}
+.avatar.c-orange{background:var(--orange-soft);color:var(--orange)}.avatar.c-red{background:var(--red-soft);color:var(--red)}.avatar.c-gray{background:var(--gray-soft);color:var(--gray)}
+.avatar svg{width:20px;height:20px}
+.slot{font-size:11px;font-weight:700;color:var(--sub);background:var(--gray-soft);border-radius:6px;padding:1px 6px;margin-left:2px}
 .pill{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap;vertical-align:1px}
 .c-green{background:var(--green-soft);color:var(--green)}.c-blue{background:var(--blue-soft);color:var(--blue)}
 .c-orange{background:var(--orange-soft);color:var(--orange)}.c-red{background:var(--red-soft);color:var(--red)}
@@ -166,7 +175,7 @@ const ADMIN_EMAILS = ['jin@naver.com', 'deuk@naver.com'];  // 보안 규칙의 �
 const FB_VER = '13.2.0';
 const ROOT = 'apps/attend';              // Firestore 안에서 이 앱의 자리 (#01의 schedules와 안 겹침)
 const LOGIN_DOMAIN = 'lesson-attend.app'; // 레슨생 계정용 가상 이메일 도메인 (메일은 안 보냄)
-const APP_VER = '1.3.0';
+const APP_VER = '1.4.0';
 const SCHED_DOC = ['schedules', 'main']; // #01 레슨 시간표 문서
 const CLOUD = !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && !/여기/.test(FIREBASE_CONFIG.apiKey));
 
@@ -486,6 +495,7 @@ function demoSched() { // 데모용 가짜 시간표: 오늘 2명, 내일 1명, 
       { id: 'l2', sid: 'd2', day: dow, hour: 20, cycle: 'weekly' },
       { id: 'l3', sid: 'd3', day: tmr, hour: 14, cycle: 'weekly' },
       { id: 'l4', sid: 'd4', day: dow, hour: 15, cycle: 'consult', date: today() },
+      { id: 'l5', sid: 'd2', day: dow, hour: 15, cycle: 'once', date: today() },
     ],
   };
 }
@@ -615,6 +625,17 @@ function alertsHTML(L) {
       <div class="ar"><span><b>${esc(s.name)}</b> · ${esc(summary(L[s.id]))}</span><button class="mini ghost" data-act="openStudent" data-sid="${s.id}">보기</button></div>`).join('')}</div>`;
   return h;
 }
+const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+/* 하루에 레슨이 여러 번(보강 + 정규 등)이면 레슨마다 한 줄씩, 출석도 따로.
+   기록의 slot = 시간표 레슨 id. slot 없는 기록(레슨생 본인 체크 등)은 빈 레슨에 시간 순서대로 채운다 */
+function slotsOf(s, ls, rs) {
+  const used = new Set(), out = ls.map(l => ({ l, r: null }));
+  for (const o of out) { const r = rs.find(x => !used.has(x.id) && x.slot === String(o.l.id)); if (r) { o.r = r; used.add(r.id); } }
+  for (const o of out) if (!o.r) { const r = rs.find(x => !used.has(x.id) && !ls.some(l => String(l.id) === x.slot)); if (r) { o.r = r; used.add(r.id); } }
+  for (const r of rs) if (!used.has(r.id)) out.push({ l: null, r });
+  if (!out.length) out.push({ l: null, r: null });
+  return out;
+}
 function todayTab(L) {
   const all = activeStudents();
   const isToday = S.date === today();
@@ -623,24 +644,29 @@ function todayTab(L) {
   const lessonsOf = s => (day && s.schedId && day.get(s.schedId)) || [];
   const scheduled = all.filter(s => lessonsOf(s).length || recOn(s.id).length);
   const dayMode = !!day && S.todayMode !== 'all';
-  const act = (dayMode ? scheduled : all).slice().sort((a, b) =>
-    (hourNum(lessonsOf(a)[0]?.hour) - hourNum(lessonsOf(b)[0]?.hour)) || byName(a, b));
-  const done = act.filter(s => recOn(s.id).length).length;
-  const rows = act.map(s => {
-    const rs = recOn(s.id), r = rs[0], l = L[s.id], ls = lessonsOf(s);
-    const when = ls.map(x => fmtHour(x.hour) + (x.cycle === 'once' ? ' 보강' : '')).filter(Boolean).join(', ');
+  const items = [];
+  for (const s of (dayMode ? scheduled : all)) {
+    const sl = slotsOf(s, lessonsOf(s), recOn(s.id));
+    sl.forEach((o, i) => items.push({ s, ...o, n: i + 1, of: sl.length }));
+  }
+  items.sort((a, b) => (hourNum(a.l?.hour) - hourNum(b.l?.hour)) || byName(a.s, b.s) || a.n - b.n);
+  const done = items.filter(x => x.r).length;
+  const rows = items.map(({ s, l: ls, r, n, of }) => {
+    const l = L[s.id];
+    const when = ls ? fmtHour(ls.hour) + (ls.cycle === 'once' ? ' 보강' : '') : '';
+    const c = r ? ST[r.status].c : '';
     const right = r
-      ? `<span class="pill c-${ST[r.status].c}">${ST[r.status].t}${rs.length > 1 ? ' +' + (rs.length - 1) : ''}</span>`
-      : `<button class="mini" data-act="quick" data-sid="${s.id}">출석</button>`;
-    return `<div class="row" data-act="openRec" data-sid="${s.id}" ${r ? `data-rid="${r.id}"` : ''} role="button">
-        <div class="avatar">${esc(s.name.slice(-2, -1) || s.name[0])}</div>
-        <div class="main"><div class="name">${esc(s.name)} ${badges(l, s)}</div>
+      ? `<span class="act c-${c}">${r.status === 'present' || r.status === 'makeup' ? CHECK_SVG : ''}${ST[r.status].t}</span>`
+      : `<button class="act go" data-act="quick" data-sid="${s.id}" data-slot="${ls ? esc(String(ls.id)) : ''}" data-mk="${ls && ls.cycle === 'once' ? 1 : ''}">${ls && ls.cycle === 'once' ? '보강' : '출석'}</button>`;
+    return `<div class="row" data-act="openRec" data-sid="${s.id}" ${r ? `data-rid="${r.id}"` : ''} data-slot="${ls ? esc(String(ls.id)) : ''}" data-mk="${ls && ls.cycle === 'once' ? 1 : ''}" role="button">
+        <div class="avatar ${c ? 'c-' + c : ''}">${r && (r.status === 'present' || r.status === 'makeup') ? CHECK_SVG : esc(s.name.slice(-2, -1) || s.name[0])}</div>
+        <div class="main"><div class="name">${esc(s.name)}${of > 1 ? `<span class="slot">${n}/${of}</span>` : ''} ${badges(l, s)}</div>
           <div class="meta">${when ? `<b style="color:var(--acc-ink)">${esc(when)}</b> · ` : ''}${esc(summary(l))}${r && r.by === 'student' ? ' · 본인 체크' : ''}${r && r.note ? ' · 📝' : ''}</div></div>
         ${right}</div>`;
   }).join('');
   return `
     <header class="top"><div><p class="sub">${isToday ? '오늘' : ''} ${fmtD(S.date)}</p><h1>출석</h1></div>
-      <span class="muted">${done}/${act.length}명 기록</span></header>
+      <span class="muted">${done}/${items.length} 기록</span></header>
     ${alertsHTML(L)}
     <div class="dnav">
       <button class="icbtn" data-act="dateShift" data-n="-1" aria-label="전날">‹</button>
@@ -649,8 +675,8 @@ function todayTab(L) {
       ${isToday ? '' : '<button class="txtbtn" data-act="dateToday">오늘</button>'}
     </div>
     ${day ? `<div class="seg" style="margin-bottom:12px"><button class="${dayMode ? 'on' : ''}" data-act="todayMode" data-v="day">수업 있는 사람 ${scheduled.length}</button><button class="${!dayMode ? 'on' : ''}" data-act="todayMode" data-v="all">전체 ${all.length}</button></div>` : ''}
-    ${act.length ? `<div class="list">${rows}</div>
-      <p class="faint" style="margin:8px 4px">[출석]을 누르면 바로 기록돼요. 이름을 누르면 보강·취소·결석과 레슨 노트를 적을 수 있어요.</p>`
+    ${items.length ? `<div class="list">${rows}</div>
+      <p class="faint" style="margin:8px 4px">[출석]을 누르면 바로 기록돼요. 하루에 레슨이 두 번이면 줄이 두 개 생기고 따로 출석해요. 이름을 누르면 취소·결석과 레슨 노트를 적을 수 있어요.</p>`
       : dayMode && all.length ? `<div class="card empty">이 날은 시간표에 수업이 없어요<br><br><button class="btn soft" data-act="todayMode" data-v="all">전체 명단 보기</button></div>`
       : `<div class="card empty">아직 레슨생이 없어요<br><br><button class="btn primary" data-act="addStudent">레슨생 추가</button></div>`}`;
 }
@@ -833,9 +859,9 @@ function ask(msg, ok = '확인', danger = false) {
 }
 const val = id => ($('#' + id)?.value ?? '').trim();
 
-function recSheet(sid, rid) {
+function recSheet(sid, rid, slot = '', mk = false) {
   const s = S.students[sid], r = rid ? S.records[rid] : null;
-  const st = r ? r.status : 'present';
+  const st = r ? r.status : (mk ? 'makeup' : 'present');
   openSheet(`
     <h3>${esc(s.name)} · ${r ? '기록 수정' : '기록 추가'}</h3>
     <p class="muted" style="margin:0 0 12px">${esc(summary(ledger(sid)))}${r?.by === 'student' ? ' · 레슨생이 직접 체크한 기록' : ''}</p>
@@ -845,7 +871,7 @@ function recSheet(sid, rid) {
     <label for="rnote">레슨 노트 <span class="faint">레슨생도 볼 수 있어요</span></label>
     <textarea id="rnote" placeholder="오늘 한 곡, 연습할 것, 다음 목표…">${esc(r?.note || '')}</textarea>
     <div class="btns">${r ? '<button class="btn danger" data-act="delRec">삭제</button>' : ''}<button class="btn primary grow" data-act="saveRec">저장</button></div>`,
-    { sid, rid, st });
+    { sid, rid, st, slot });
 }
 function payNotice(sid, before, after) {
   const n = S.students[sid]?.name || '';
@@ -882,7 +908,9 @@ function studentSheet(sid) {
 async function addRecord(sid, data) {
   const before = ledger(sid).remaining;
   const id = newId('records');
-  await put('records', id, { sid, date: data.date, status: data.status, note: data.note || '', by: data.by, createdAt: now() });
+  const rec = { sid, date: data.date, status: data.status, note: data.note || '', by: data.by, createdAt: now() };
+  if (data.slot) rec.slot = String(data.slot);
+  await put('records', id, rec);
   payNotice(sid, before, before - (deducts(data.status) ? 1 : 0));
 }
 function lerr(msg) { const e = $('#lerr'); if (e) e.textContent = msg; }
@@ -1036,15 +1064,15 @@ const ACT = {
   openStudent: d => { S.tab = 'students'; S.view = d.sid; render(); scrollTo(0, 0); },
   back: () => { S.view = null; render(); },
   toggleEnded: () => { S.showEnded = !S.showEnded; render(); },
-  quick: async d => { await addRecord(d.sid, { date: S.date, status: 'present', by: 'admin' }); },
-  openRec: d => recSheet(d.sid, d.new ? null : d.rid),
+  quick: async d => { await addRecord(d.sid, { date: S.date, status: d.mk ? 'makeup' : 'present', by: 'admin', slot: d.slot }); },
+  openRec: d => recSheet(d.sid, d.new ? null : d.rid, d.new ? '' : d.slot, !!d.mk),
   pickSt: (d, b) => { SH.st = d.v; b.parentNode.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x === b)); $('#sthint').textContent = stHint(d.v); },
   saveRec: async () => {
-    const { sid, rid, st } = SH, date = val('rdate'), note = val('rnote');
+    const { sid, rid, st, slot } = SH, date = val('rdate'), note = val('rnote');
     if (!date) return toast('날짜를 골라 주세요');
-    if (!rid) { closeSheet(); return addRecord(sid, { date, status: st, note, by: 'admin' }); }
+    if (!rid) { closeSheet(); return addRecord(sid, { date, status: st, note, by: 'admin', slot: date === S.date ? slot : '' }); }
     const old = S.records[rid], before = ledger(sid).remaining;
-    await put('records', rid, { date, status: st, note });
+    await put('records', rid, { date, status: st, note });  // slot은 그대로
     closeSheet(); toast('저장했어요');
     payNotice(sid, before, before - (deducts(st) ? 1 : 0) + (deducts(old.status) ? 1 : 0));
   },
