@@ -166,7 +166,7 @@ const ADMIN_EMAILS = ['jin@naver.com', 'deuk@naver.com'];  // 보안 규칙의 �
 const FB_VER = '13.2.0';
 const ROOT = 'apps/attend';              // Firestore 안에서 이 앱의 자리 (#01의 schedules와 안 겹침)
 const LOGIN_DOMAIN = 'lesson-attend.app'; // 레슨생 계정용 가상 이메일 도메인 (메일은 안 보냄)
-const APP_VER = '1.2.0';
+const APP_VER = '1.3.0';
 const SCHED_DOC = ['schedules', 'main']; // #01 레슨 시간표 문서
 const CLOUD = !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && !/여기/.test(FIREBASE_CONFIG.apiKey));
 
@@ -186,8 +186,11 @@ const shiftYM = (ym, n) => { const d = new Date(+ym.slice(0,4), +ym.slice(5) - 1
 const won = n => (Number(n) || 0).toLocaleString('ko-KR') + '원';
 const ts = v => v == null ? Date.now() : (typeof v === 'number' ? v : (v.toMillis ? v.toMillis() : 0));
 const byName = (a, b) => a.name.localeCompare(b.name, 'ko');
-const normName = s => String(s || '').normalize('NFC').replace(/\s+/g, '');
-const nameKey = s => 'n' + Array.from(new TextEncoder().encode(normName(s)), b => b.toString(16).padStart(2, '0')).join('');
+// 이름 끝의 '님'은 떼고 쓴다 (시간표에 '김민지님'으로 적혀 있어도 아이디·표시는 '김민지')
+const cleanName = s => String(s ?? '').normalize('NFC').trim().replace(/\s+/g, ' ').replace(/\s*님$/, '').trim();
+const hexKey = s => 'n' + Array.from(new TextEncoder().encode(s), b => b.toString(16).padStart(2, '0')).join('');
+const nameKey = s => hexKey(cleanName(s).replace(/\s+/g, ''));
+const legacyKeys = s => { const raw = String(s || '').normalize('NFC').replace(/\s+/g, ''); return [hexKey(raw), hexKey(raw + '님')]; }; // v1.2 이전 가입자용
 const CODE_CH = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const genCode = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), b => CODE_CH[b % CODE_CH.length]).join('');
 const codeEmail = code => `a-${code.toLowerCase()}@${LOGIN_DOMAIN}`;
@@ -324,6 +327,7 @@ function listen(target, onData) {
   unsubs.push(fb.onSnapshot(target, onData, e => toast('불러오기 실패: ' + errMsg(e))));
 }
 function mapSnap(snap) { const m = {}; snap.forEach(d => m[d.id] = { ...d.data(), id: d.id }); return m; }
+const cleanStudents = m => { for (const v of Object.values(m)) if (v.name) v.name = cleanName(v.name); return m; };
 function subSettings() {
   listen(fb.doc(db, ROOT, 'meta', 'settings'), d => { S.settings = { ...DEF_SETTINGS, ...(d.data() || {}) }; S.loaded.settings = true; if (S.role === 'admin') syncFromSchedule(); scheduleRender(); });
 }
@@ -331,7 +335,7 @@ const cleaned = new Set();
 function subAdmin() {
   subSettings();
   for (const c of ['students', 'records', 'passes'])
-    listen(fb.collection(db, ROOT, c), snap => { S[c] = mapSnap(snap); if (c === 'students') { S.loaded.students = true; cleanupInvites(); syncFromSchedule(); } scheduleRender(); });
+    listen(fb.collection(db, ROOT, c), snap => { S[c] = c === 'students' ? cleanStudents(mapSnap(snap)) : mapSnap(snap); if (c === 'students') { S.loaded.students = true; cleanupInvites(); syncFromSchedule(); } scheduleRender(); });
   // #01 레슨 시간표의 수강생 명단을 실시간으로 받아서 자동 추가
   unsubs.push(fb.onSnapshot(fb.doc(db, ...SCHED_DOC), d => { S.sched = d.exists() ? d.data() : { students: [] }; S.schedErr = ''; syncFromSchedule(); scheduleRender(); },
     e => { S.schedErr = errMsg(e); scheduleRender(); }));
@@ -390,10 +394,10 @@ async function syncFromSchedule() {
     const lessons = Array.isArray(S.sched.lessons) ? S.sched.lessons : null;
     const regular = lessons ? new Set(lessons.filter(l => l && l.sid != null && RECURRING(l.cycle)).map(l => String(l.sid))) : null;
     const list = (Array.isArray(S.sched.students) ? S.sched.students : [])
-      .filter(x => x && x.id != null && String(x.name || '').trim() && (!regular || regular.has(String(x.id))));
+      .filter(x => x && x.id != null && cleanName(x.name) && (!regular || regular.has(String(x.id))));
     const ids = new Set(list.map(x => String(x.id)));
     for (const x of list) {
-      const schedId = String(x.id), nm = String(x.name).trim().replace(/\s+/g, ' ');
+      const schedId = String(x.id), nm = cleanName(x.name);
       if (skip.has(schedId)) continue;
       const all = Object.values(S.students);
       let s = all.find(a => a.schedId === schedId);
@@ -405,7 +409,7 @@ async function syncFromSchedule() {
       }
       const patch = {};
       if (s.schedGone) patch.schedGone = false;
-      if (!s.uid && s.name !== nm && !all.some(a => a.id !== s.id && a.loginKey === nameKey(nm))) {
+      if (!s.uid && (s.name !== nm || s.loginKey !== nameKey(nm)) && !all.some(a => a.id !== s.id && a.loginKey === nameKey(nm))) {
         patch.name = nm; patch.loginKey = nameKey(nm);
         if (CLOUD && s.code) await fb.setDoc(fb.doc(db, ROOT, 'invites', s.code), { name: nm }, { merge: true });
       }
@@ -436,7 +440,7 @@ function cleanupInvites() { // 가입을 마친 레슨생의 초대코드는 지
 function subStudent() {
   const sid = S.sid;
   subSettings();
-  listen(fb.doc(db, ROOT, 'students', sid), d => { S.students = d.exists() ? { [sid]: { ...d.data(), id: sid } } : {}; scheduleRender(); });
+  listen(fb.doc(db, ROOT, 'students', sid), d => { S.students = d.exists() ? cleanStudents({ [sid]: { ...d.data(), id: sid } }) : {}; scheduleRender(); });
   for (const c of ['records', 'passes'])
     listen(fb.query(fb.collection(db, ROOT, c), fb.where('sid', '==', sid)), snap => { S[c] = mapSnap(snap); scheduleRender(); });
 }
@@ -466,7 +470,7 @@ function demoSeed() {
 function initDemo() {
   try {
     const d = JSON.parse(localStorage.getItem(LS_DATA) || 'null');
-    if (d) { S.settings = { ...DEF_SETTINGS, ...d.settings }; S.students = d.students || {}; S.records = d.records || {}; S.passes = d.passes || {}; }
+    if (d) { S.settings = { ...DEF_SETTINGS, ...d.settings }; S.students = cleanStudents(d.students || {}); S.records = d.records || {}; S.passes = d.passes || {}; }
     else demoSeed();
   } catch { demoSeed(); }
   S.sched = demoSched(); S.loaded = { students: true, settings: true };
@@ -538,7 +542,7 @@ function loginView() {
       <h3>데모 모드</h3>
       <p class="muted" style="margin:0 0 12px">Firebase를 연결하기 전이라 데이터가 이 기기에만 저장돼요. 화면을 둘러보세요.</p>
       <button class="btn primary" data-act="demoAdmin">원장 화면으로 보기</button>
-      ${Object.values(S.students).filter(s => s.uid).sort(byName).map(s => `<button class="btn soft" data-act="demoStudent" data-sid="${s.id}">레슨생 ${esc(s.name)} 님으로 보기</button>`).join('')}
+      ${Object.values(S.students).filter(s => s.uid).sort(byName).map(s => `<button class="btn soft" data-act="demoStudent" data-sid="${s.id}">레슨생 화면 보기 · ${esc(s.name)}</button>`).join('')}
       ${Object.values(S.students).filter(s => !s.uid && s.code).slice(0, 1).map(s => `<p class="faint" style="margin:10px 0 0">가입 체험: "초대코드로 가입"에 <b>${esc(s.code)}</b> 입력</p>`).join('')}
     </div>` : '';
   const isJoin = S.loginTab === 'join';
@@ -557,7 +561,7 @@ function loginView() {
       <div style="height:16px"></div>
       <button class="btn primary" data-act="checkCode">확인</button>`;
   else form = `
-      <div class="hello"><b>${esc(S.invite.name)}</b> 님, 반가워요!<br>아이디는 <b>${esc(S.invite.name)}</b>(으)로 정해져 있어요. 비밀번호만 정해 주세요.</div>
+      <div class="hello"><b>${esc(S.invite.name)}</b>, 반가워요!<br>아이디는 <b>${esc(S.invite.name)}</b>(으)로 정해져 있어요. 비밀번호만 정해 주세요.</div>
       <label>아이디</label>
       <input type="text" value="${esc(S.invite.name)}" autocomplete="username" readonly disabled>
       <label for="jpw">비밀번호 (6자 이상)</label>
@@ -804,7 +808,7 @@ function studentView() {
       <div class="name"><span>${fmtS(r.date)}</span><span class="pill c-${ST[r.status].c}">${ST[r.status].t}</span><span class="faint">${tagText(L.tag[r.id])}</span></div>
       ${r.note ? `<div class="note">📝 ${esc(r.note)}</div>` : ''}</div></div>`).join('');
   return `
-    <header class="top"><div><p class="sub">안녕하세요</p><h1>${esc(s.name)} 님</h1></div>${!CLOUD ? '<span class="pill c-acc">데모</span>' : ''}</header>
+    <header class="top"><div><p class="sub">안녕하세요</p><h1>${esc(s.name)}</h1></div>${!CLOUD ? '<span class="pill c-acc">데모</span>' : ''}</header>
     ${notice}
     <div class="card hero">${big}${dotsHTML(L)}
       <div class="cap">${L.cur ? `이번 수강권 ${L.cur.used}/${L.cur.total}회 사용 · ${fmtS(L.cur.paidAt)} 결제` : '원장쌤이 수강권을 등록하면 여기에 보여요'}</div></div>
@@ -845,8 +849,8 @@ function recSheet(sid, rid) {
 }
 function payNotice(sid, before, after) {
   const n = S.students[sid]?.name || '';
-  if (after <= 0 && before > 0) toast(`${n} 님 수강권을 다 썼어요 · 결제가 필요해요`);
-  else if (after === 1 && before !== 1) toast(`${n} 님 다음 레슨이 마지막 회차예요`);
+  if (after <= 0 && before > 0) toast(`${n} · 수강권을 다 썼어요 · 결제가 필요해요`);
+  else if (after === 1 && before !== 1) toast(`${n} · 다음 레슨이 마지막 회차예요`);
 }
 function paySheet(sid, pid) {
   const s = S.students[sid], p = pid ? S.passes[pid] : null, L = ledger(sid);
@@ -893,9 +897,13 @@ async function doLogin() {
   }
   let email = id.toLowerCase();
   if (!id.includes('@')) {
-    const snap = await fb.getDoc(fb.doc(db, ROOT, 'logins', nameKey(id)));
-    if (!snap.exists()) throw { code: 'app/no-user' };
-    email = snap.data().email;
+    let found = null;
+    for (const k of [nameKey(id), ...legacyKeys(id)]) {
+      const snap = await fb.getDoc(fb.doc(db, ROOT, 'logins', k));
+      if (snap.exists()) { found = snap.data(); break; }
+    }
+    if (!found) throw { code: 'app/no-user' };
+    email = found.email;
   }
   await fb.signInWithEmailAndPassword(auth, email, pw);
 }
@@ -909,7 +917,7 @@ async function checkCode() {
   }
   const snap = await fb.getDoc(fb.doc(db, ROOT, 'invites', code));
   if (!snap.exists()) throw { code: 'app/bad-code' };
-  S.invite = { code, ...snap.data() }; render();
+  S.invite = { code, ...snap.data() }; S.invite.name = cleanName(S.invite.name); render();
 }
 async function doJoin() {
   const pw = $('#jpw').value, pw2 = $('#jpw2').value;
@@ -935,7 +943,7 @@ async function doJoin() {
 }
 function inviteText(s) {
   const url = location.origin + location.pathname;
-  return `[레슨 출석] ${s.name} 님 초대코드: ${s.code}\n\n1) ${url} 열기\n2) "초대코드로 가입" → 코드 입력\n3) 비밀번호만 정하면 끝! (아이디는 "${s.name}")\n\n아이폰은 Safari 공유 버튼 → "홈 화면에 추가"하면 앱처럼 쓸 수 있어요.`;
+  return `[레슨 출석] ${s.name} 초대코드: ${s.code}\n\n1) ${url} 열기\n2) "초대코드로 가입" → 코드 입력\n3) 비밀번호만 정하면 끝! (아이디는 "${s.name}")\n\n아이폰은 Safari 공유 버튼 → "홈 화면에 추가"하면 앱처럼 쓸 수 있어요.`;
 }
 async function copyText(t) {
   try { await navigator.clipboard.writeText(t); toast('복사했어요'); }
@@ -952,14 +960,14 @@ async function createStudent({ name, memo = '', schedId = null, firstPass = fals
 }
 async function saveStudent() {
   const sid = SH.sid, s = sid ? S.students[sid] : null;
-  const name = s?.uid ? s.name : val('sname').replace(/\s+/g, ' '), memo = val('smemo');
+  const name = s?.uid ? s.name : cleanName(val('sname')), memo = val('smemo');
   const se = $('#serr');
   if (!name) { se.textContent = '이름을 입력해 주세요'; return; }
   const key = nameKey(name);
   if (Object.values(S.students).some(x => x.id !== sid && x.loginKey === key)) { se.textContent = '같은 이름이 있어요. 구분되게 적어 주세요 (예: 김민지B)'; return; }
   if (s) {
     const patch = { memo };
-    if (!s.uid && name !== s.name) { patch.name = name; patch.loginKey = key; if (CLOUD && s.code) await fb.setDoc(fb.doc(db, ROOT, 'invites', s.code), { name }, { merge: true }); }
+    if (!s.uid && (name !== s.name || s.loginKey !== key)) { patch.name = name; patch.loginKey = key; if (CLOUD && s.code) await fb.setDoc(fb.doc(db, ROOT, 'invites', s.code), { name }, { merge: true }); }
     await put('students', sid, patch); closeSheet(); toast('저장했어요'); return;
   }
   const id = await createStudent({ name, memo, firstPass: $('#sfirst')?.checked });
@@ -968,7 +976,7 @@ async function saveStudent() {
 }
 async function reissue(sid) {
   const s = S.students[sid];
-  if (!(await ask(`${s.name} 님의 새 초대코드를 만들까요?\n\n지금 계정으로는 더 이상 로그인할 수 없고, 새 코드로 다시 가입해서 비밀번호를 정하면 돼요. 출석·결제 기록은 그대로예요.`, '확인', true))) return;
+  if (!(await ask(`${s.name}의 새 초대코드를 만들까요?\n\n지금 계정으로는 더 이상 로그인할 수 없고, 새 코드로 다시 가입해서 비밀번호를 정하면 돼요. 출석·결제 기록은 그대로예요.`, '확인', true))) return;
   const code = genCode(), email = codeEmail(code);
   if (CLOUD) {
     await cloudDel('invites', s.code);
@@ -982,7 +990,7 @@ async function reissue(sid) {
 }
 async function delStudent(sid) {
   const s = S.students[sid];
-  if (!(await ask(`${s.name} 님과 출석·결제 기록을 모두 삭제할까요?\n되돌릴 수 없어요. 그만둔 거라면 "수강 종료로 표시"를 추천해요.${s.schedId ? '\n\n시간표에 남아 있어도 다시 가져오지 않아요.' : ''}`, '확인', true))) return;
+  if (!(await ask(`${s.name}의 정보와 출석·결제 기록을 모두 삭제할까요?\n되돌릴 수 없어요. 그만둔 거라면 "수강 종료로 표시"를 추천해요.${s.schedId ? '\n\n시간표에 남아 있어도 다시 가져오지 않아요.' : ''}`, '확인', true))) return;
   for (const r of Object.values(S.records).filter(r => r.sid === sid)) await del('records', r.id);
   for (const p of Object.values(S.passes).filter(p => p.sid === sid)) await del('passes', p.id);
   if (CLOUD) { await cloudDel('invites', s.code); await cloudDel('users', s.uid); await cloudDel('logins', s.loginKey); }
@@ -1047,7 +1055,7 @@ const ACT = {
     if (!paidAt || !(total > 0)) return toast('결제일과 횟수를 확인해 주세요');
     if (pid) await put('passes', pid, { paidAt, total, amount, memo });
     else await put('passes', newId('passes'), { sid, paidAt, total, amount, memo, createdAt: now() });
-    closeSheet(); toast(pid ? '저장했어요' : `${S.students[sid]?.name} 님 ${total}회 수강권 시작!`);
+    closeSheet(); toast(pid ? '저장했어요' : `${S.students[sid]?.name} · ${total}회 수강권 시작!`);
   },
   delPay: async () => { if (!(await ask('이 결제 기록을 삭제할까요?\n남은 횟수가 다시 계산돼요.', '확인', true))) return; await del('passes', SH.pid); closeSheet(); toast('삭제했어요'); },
   addStudent: () => studentSheet(null),
