@@ -166,7 +166,7 @@ const ADMIN_EMAILS = ['jin@naver.com', 'deuk@naver.com'];  // 보안 규칙의 �
 const FB_VER = '13.2.0';
 const ROOT = 'apps/attend';              // Firestore 안에서 이 앱의 자리 (#01의 schedules와 안 겹침)
 const LOGIN_DOMAIN = 'lesson-attend.app'; // 레슨생 계정용 가상 이메일 도메인 (메일은 안 보냄)
-const APP_VER = '1.1.0';
+const APP_VER = '1.2.0';
 const SCHED_DOC = ['schedules', 'main']; // #01 레슨 시간표 문서
 const CLOUD = !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && !/여기/.test(FIREBASE_CONFIG.apiKey));
 
@@ -199,7 +199,7 @@ const S = {
   ready: false, user: null, role: null, sid: null, err: '',
   settings: { ...DEF_SETTINGS }, students: {}, records: {}, passes: {},
   tab: 'today', date: today(), month: ymOf(today()), view: null, showEnded: false,
-  sched: null, loaded: {},
+  sched: null, loaded: {}, todayMode: 'day',
   loginTab: 'login', invite: null, signingUp: false,
 };
 const ST = {
@@ -343,6 +343,41 @@ function subAdmin() {
    - 가입 전이면 시간표에서 바꾼 이름도 따라감 (가입 후엔 이름 = 아이디라 고정)
    - 시간표에서 지워지면 삭제하지 않고 '시간표에 없음' 표시 (남은 수강권·기록 보호)
    - 출석 앱에서 삭제한 사람은 syncSkip에 적어 두고 다시 가져오지 않음 */
+/* ---------- 시간표 읽기 도우미 ----------
+   #01 레슨: { sid, day(0=월), hour, cycle, date? }
+   cycle: weekly(매주) / day(주간 근무 주) / night(야간 근무 주) / once(보강, date) / consult(상담 등 일회성) */
+const RECURRING = c => !c || c === 'weekly' || c === 'day' || c === 'night';
+const mondayOf = ds => { const x = new Date(ds + 'T00:00:00'); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return x; };
+function shiftOf(st, date) { // 그 주의 근무: 'day' | 'night' | null(모름)
+  if (!st || !st.ref || (st.refShift !== 'day' && st.refShift !== 'night')) return null;
+  const w = Math.round((mondayOf(date) - mondayOf(st.ref)) / (7 * 864e5));
+  if (!isFinite(w)) return null;
+  return Math.abs(w) % 2 === 0 ? st.refShift : (st.refShift === 'day' ? 'night' : 'day');
+}
+function schedOn(date) { // Map(시간표 수강생 id → 그날 레슨[]) · 시간표가 없으면 null
+  const sc = S.sched;
+  if (!sc || !Array.isArray(sc.lessons)) return null;
+  const dow = (new Date(date + 'T00:00:00').getDay() + 6) % 7;
+  const studs = new Map((sc.students || []).filter(Boolean).map(x => [String(x.id), x]));
+  const out = new Map();
+  for (const l of sc.lessons) {
+    if (!l || l.sid == null) continue;
+    const c = l.cycle || 'weekly';
+    let ok = false;
+    if (c === 'once') ok = l.date === date;
+    else if (c === 'weekly') ok = +l.day === dow;
+    else if (c === 'day' || c === 'night') { const sh = shiftOf(studs.get(String(l.sid)), date); ok = +l.day === dow && (sh == null || sh === c); }
+    if (!ok) continue;
+    const k = String(l.sid);
+    if (!out.has(k)) out.set(k, []);
+    out.get(k).push(l);
+  }
+  for (const v of out.values()) v.sort((a, b) => hourNum(a.hour) - hourNum(b.hour));
+  return out;
+}
+const hourNum = h => { if (typeof h === 'number') return h; const m = String(h ?? '').match(/(\d+)(?::(\d+))?/); return m ? +m[1] + (+m[2] || 0) / 60 : 99; };
+const fmtHour = h => { if (h == null || h === '') return ''; if (typeof h !== 'number') return String(h); const H = Math.floor(h), M = Math.round((h - H) * 60); return `${H}:${pad(M)}`; };
+
 let syncBusy = false, syncAgain = false;
 async function syncFromSchedule() {
   if (S.role !== 'admin' || !S.sched || !S.loaded.students || !S.loaded.settings || S.settings.syncSchedule === false) return;
@@ -351,8 +386,11 @@ async function syncFromSchedule() {
   let added = 0;
   try {
     const skip = new Set((S.settings.syncSkip || []).map(String));
+    // 정규 레슨(매주·주간·야간)이 있는 수강생만. 상담·녹음 상담·보강만 있는 사람은 일회성이라 안 가져옴
+    const lessons = Array.isArray(S.sched.lessons) ? S.sched.lessons : null;
+    const regular = lessons ? new Set(lessons.filter(l => l && l.sid != null && RECURRING(l.cycle)).map(l => String(l.sid))) : null;
     const list = (Array.isArray(S.sched.students) ? S.sched.students : [])
-      .filter(x => x && x.id != null && String(x.name || '').trim());
+      .filter(x => x && x.id != null && String(x.name || '').trim() && (!regular || regular.has(String(x.id))));
     const ids = new Set(list.map(x => String(x.id)));
     for (const x of list) {
       const schedId = String(x.id), nm = String(x.name).trim().replace(/\s+/g, ' ');
@@ -373,8 +411,13 @@ async function syncFromSchedule() {
       }
       if (Object.keys(patch).length) await put('students', s.id, patch);
     }
-    for (const a of Object.values(S.students))
-      if (a.schedId && !ids.has(a.schedId) && !a.schedGone) await put('students', a.id, { schedGone: true });
+    const canTrim = lessons && lessons.length > 0; // 시간표를 제대로 읽었을 때만 정리
+    for (const a of Object.values(S.students)) {
+      if (!a.schedId || ids.has(a.schedId)) continue;
+      const used = a.uid || Object.values(S.records).some(r => r.sid === a.id) || Object.values(S.passes).some(p => p.sid === a.id);
+      if (canTrim && !used) { await cloudDel('invites', a.code); await del('students', a.id); continue; } // 자동으로 들어왔다가 쓴 적 없는 사람(상담만 등)은 정리
+      if (!a.schedGone) await put('students', a.id, { schedGone: true });
+    }
   } catch (e) { console.error(e); toast('시간표 명단 가져오기 실패: ' + errMsg(e)); }
   finally { syncBusy = false; }
   if (added) toast(`시간표에서 레슨생 ${added}명을 가져왔어요`);
@@ -426,13 +469,27 @@ function initDemo() {
     if (d) { S.settings = { ...DEF_SETTINGS, ...d.settings }; S.students = d.students || {}; S.records = d.records || {}; S.passes = d.passes || {}; }
     else demoSeed();
   } catch { demoSeed(); }
+  S.sched = demoSched(); S.loaded = { students: true, settings: true };
   try { const s = JSON.parse(localStorage.getItem(LS_SESS) || 'null'); if (s) demoLoginAs(s.role, s.sid, true); } catch {}
   S.ready = true; render();
+}
+function demoSched() { // 데모용 가짜 시간표: 오늘 2명, 내일 1명, 상담만 있는 1명(안 가져옴)
+  const dow = (new Date().getDay() + 6) % 7, tmr = (dow + 1) % 7;
+  return {
+    students: [{ id: 'd1', name: '김민지' }, { id: 'd2', name: '이서연' }, { id: 'd3', name: '박하준' }, { id: 'd4', name: '오상담' }],
+    lessons: [
+      { id: 'l1', sid: 'd1', day: dow, hour: 19, cycle: 'weekly' },
+      { id: 'l2', sid: 'd2', day: dow, hour: 20, cycle: 'weekly' },
+      { id: 'l3', sid: 'd3', day: tmr, hour: 14, cycle: 'weekly' },
+      { id: 'l4', sid: 'd4', day: dow, hour: 15, cycle: 'consult', date: today() },
+    ],
+  };
 }
 function demoLoginAs(role, sid, silent) {
   S.role = role; S.sid = sid || null; S.view = null; S.tab = 'today';
   S.user = { email: role === 'admin' ? '원장 (데모)' : (S.students[sid]?.name || '') };
   try { localStorage.setItem(LS_SESS, JSON.stringify({ role, sid })); } catch {}
+  if (role === 'admin') syncFromSchedule();
   if (!silent) { render(); scrollTo(0, 0); }
 }
 
@@ -555,19 +612,26 @@ function alertsHTML(L) {
   return h;
 }
 function todayTab(L) {
-  const act = activeStudents();
+  const all = activeStudents();
   const isToday = S.date === today();
   const recOn = sid => Object.values(S.records).filter(r => r.sid === sid && r.date === S.date).sort((a, b) => ts(a.createdAt) - ts(b.createdAt));
+  const day = schedOn(S.date);              // 시간표를 못 읽으면 null → 전체 명단
+  const lessonsOf = s => (day && s.schedId && day.get(s.schedId)) || [];
+  const scheduled = all.filter(s => lessonsOf(s).length || recOn(s.id).length);
+  const dayMode = !!day && S.todayMode !== 'all';
+  const act = (dayMode ? scheduled : all).slice().sort((a, b) =>
+    (hourNum(lessonsOf(a)[0]?.hour) - hourNum(lessonsOf(b)[0]?.hour)) || byName(a, b));
   const done = act.filter(s => recOn(s.id).length).length;
   const rows = act.map(s => {
-    const rs = recOn(s.id), r = rs[0], l = L[s.id];
+    const rs = recOn(s.id), r = rs[0], l = L[s.id], ls = lessonsOf(s);
+    const when = ls.map(x => fmtHour(x.hour) + (x.cycle === 'once' ? ' 보강' : '')).filter(Boolean).join(', ');
     const right = r
       ? `<span class="pill c-${ST[r.status].c}">${ST[r.status].t}${rs.length > 1 ? ' +' + (rs.length - 1) : ''}</span>`
       : `<button class="mini" data-act="quick" data-sid="${s.id}">출석</button>`;
     return `<div class="row" data-act="openRec" data-sid="${s.id}" ${r ? `data-rid="${r.id}"` : ''} role="button">
         <div class="avatar">${esc(s.name.slice(-2, -1) || s.name[0])}</div>
         <div class="main"><div class="name">${esc(s.name)} ${badges(l, s)}</div>
-          <div class="meta">${esc(summary(l))}${r && r.by === 'student' ? ' · 본인 체크' : ''}${r && r.note ? ' · 📝' : ''}</div></div>
+          <div class="meta">${when ? `<b style="color:var(--acc-ink)">${esc(when)}</b> · ` : ''}${esc(summary(l))}${r && r.by === 'student' ? ' · 본인 체크' : ''}${r && r.note ? ' · 📝' : ''}</div></div>
         ${right}</div>`;
   }).join('');
   return `
@@ -580,8 +644,10 @@ function todayTab(L) {
       <button class="icbtn" data-act="dateShift" data-n="1" aria-label="다음날">›</button>
       ${isToday ? '' : '<button class="txtbtn" data-act="dateToday">오늘</button>'}
     </div>
+    ${day ? `<div class="seg" style="margin-bottom:12px"><button class="${dayMode ? 'on' : ''}" data-act="todayMode" data-v="day">수업 있는 사람 ${scheduled.length}</button><button class="${!dayMode ? 'on' : ''}" data-act="todayMode" data-v="all">전체 ${all.length}</button></div>` : ''}
     ${act.length ? `<div class="list">${rows}</div>
       <p class="faint" style="margin:8px 4px">[출석]을 누르면 바로 기록돼요. 이름을 누르면 보강·취소·결석과 레슨 노트를 적을 수 있어요.</p>`
+      : dayMode && all.length ? `<div class="card empty">이 날은 시간표에 수업이 없어요<br><br><button class="btn soft" data-act="todayMode" data-v="all">전체 명단 보기</button></div>`
       : `<div class="card empty">아직 레슨생이 없어요<br><br><button class="btn primary" data-act="addStudent">레슨생 추가</button></div>`}`;
 }
 function studentsTab(L) {
@@ -593,7 +659,7 @@ function studentsTab(L) {
     return `<button class="row" data-act="openStudent" data-sid="${s.id}">
       <div class="avatar ${s.active === false ? 'off' : ''}">${esc(s.name.slice(-2, -1) || s.name[0])}</div>
       <div class="main"><div class="name">${esc(s.name)} ${badges(l, s)}</div>
-        <div class="meta">${esc(summary(l))}${s.uid ? '' : ' · <span style="color:var(--acc-ink)">가입 전</span>'}${s.schedGone ? ' · 시간표에 없음' : ''}${s.memo ? ' · ' + esc(s.memo) : ''}</div></div>
+        <div class="meta">${esc(summary(l))}${s.uid ? '' : ' · <span style="color:var(--acc-ink)">가입 전</span>'}${s.schedGone ? ' · 시간표에 정규 수업 없음' : ''}${s.memo ? ' · ' + esc(s.memo) : ''}</div></div>
       <span class="chev">›</span></button>`;
   }).join('');
   return `
@@ -606,8 +672,7 @@ function schedNote() {
   if (!CLOUD || S.settings.syncSchedule === false) return '';
   if (S.schedErr) return `<p class="err">시간표 명단을 못 읽었어요: ${esc(S.schedErr)}</p>`;
   if (!S.sched) return '<p class="faint" style="margin:8px 4px">시간표 명단 확인 중…</p>';
-  const n = (S.sched.students || []).length;
-  return `<p class="faint" style="margin:8px 4px">🔗 레슨 시간표와 연결됨 · 시간표 수강생 ${n}명이 자동으로 들어와요</p>`;
+  return `<p class="faint" style="margin:8px 4px">🔗 레슨 시간표와 연결됨 · 정규 수업이 있는 수강생은 자동으로 들어와요 (상담 등 일회성 제외)</p>`;
 }
 function studentDetail(sid, L) {
   const s = S.students[sid];
@@ -956,8 +1021,9 @@ const ACT = {
     if (await ask('로그아웃할까요?', '로그아웃')) await fb.signOut(auth);
   },
   tab: d => { if (S.tab === d.v && S.view) S.view = null; S.tab = d.v; if (d.v !== 'students') S.view = null; render(); scrollTo(0, 0); },
-  dateShift: d => { S.date = addDays(S.date, +d.n); render(); },
-  dateToday: () => { S.date = today(); render(); },
+  dateShift: d => { S.date = addDays(S.date, +d.n); S.todayMode = 'day'; render(); },
+  dateToday: () => { S.date = today(); S.todayMode = 'day'; render(); },
+  todayMode: d => { S.todayMode = d.v; render(); },
   monthShift: d => { S.month = shiftYM(S.month, +d.n); render(); },
   openStudent: d => { S.tab = 'students'; S.view = d.sid; render(); scrollTo(0, 0); },
   back: () => { S.view = null; render(); },
