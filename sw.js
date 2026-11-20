@@ -1,5 +1,5 @@
 // 앱을 고쳐서 배포할 때마다 숫자를 올리기 (옛 캐시 정리용)
-const CACHE = 'lesson-attend-v1';
+const CACHE = 'lesson-attend-v2';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
@@ -13,9 +13,9 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== location.origin || !url.pathname.startsWith(new URL(self.registration.scope).pathname)) return; // Firebase 등 외부 요청은 그대로
-  const isPage = req.mode === 'navigate' || url.pathname.endsWith('/') || url.pathname.endsWith('index.html');
+  const isPage = req.mode === 'navigate' || url.pathname.endsWith('/') || url.pathname.endsWith('index.html') || url.pathname.endsWith('config.js');
   if (isPage) {
-    // 화면(index.html)은 네트워크 먼저 → 새 버전을 바로 받음, 오프라인이면 캐시
+    // 화면(index.html)·설정(config.js)은 네트워크 먼저 → 새 버전을 바로 받음, 오프라인이면 캐시
     e.respondWith(fetch(req).then(r => { const c = r.clone(); caches.open(CACHE).then(x => x.put(req, c)); return r; }).catch(() => caches.match(req).then(r => r || caches.match('./index.html'))));
   } else {
     e.respondWith(caches.match(req).then(r => r || fetch(req)));
