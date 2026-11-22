@@ -175,7 +175,7 @@ const ADMIN_EMAILS = ['jin@naver.com', 'deuk@naver.com'];  // 보안 규칙의 �
 const FB_VER = '13.2.0';
 const ROOT = 'apps/attend';              // Firestore 안에서 이 앱의 자리 (#01의 schedules와 안 겹침)
 const LOGIN_DOMAIN = 'lesson-attend.app'; // 레슨생 계정용 가상 이메일 도메인 (메일은 안 보냄)
-const APP_VER = '1.4.0';
+const APP_VER = '1.4.1';
 const SCHED_DOC = ['schedules', 'main']; // #01 레슨 시간표 문서
 const CLOUD = !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && !/여기/.test(FIREBASE_CONFIG.apiKey));
 
@@ -344,7 +344,7 @@ const cleaned = new Set();
 function subAdmin() {
   subSettings();
   for (const c of ['students', 'records', 'passes'])
-    listen(fb.collection(db, ROOT, c), snap => { S[c] = c === 'students' ? cleanStudents(mapSnap(snap)) : mapSnap(snap); if (c === 'students') { S.loaded.students = true; cleanupInvites(); syncFromSchedule(); } scheduleRender(); });
+    listen(fb.collection(db, ROOT, c), snap => { S[c] = c === 'students' ? cleanStudents(mapSnap(snap)) : mapSnap(snap); if (c === 'students') { S.loaded.students = true; cleanupInvites(); ensureInvites(); syncFromSchedule(); } scheduleRender(); });
   // #01 레슨 시간표의 수강생 명단을 실시간으로 받아서 자동 추가
   unsubs.push(fb.onSnapshot(fb.doc(db, ...SCHED_DOC), d => { S.sched = d.exists() ? d.data() : { students: [] }; S.schedErr = ''; syncFromSchedule(); scheduleRender(); },
     e => { S.schedErr = errMsg(e); scheduleRender(); }));
@@ -441,6 +441,23 @@ function uniqueName(nm) {
   while (Object.values(S.students).some(a => a.loginKey === nameKey(n))) n = nm + i++;
   return n;
 }
+// 가입 전 레슨생의 초대코드 문서가 빠져 있으면 다시 만든다 (원장 앱이 열릴 때마다 한 번씩 점검)
+const inviteChecked = new Set();
+async function ensureInvites() {
+  for (const s of Object.values(S.students)) {
+    if (s.uid || !s.code || inviteChecked.has(s.code)) continue;
+    inviteChecked.add(s.code);
+    try {
+      const email = s.email || codeEmail(s.code);
+      if (!s.email) await fb.updateDoc(fb.doc(db, ROOT, 'students', s.id), { email });
+      const d = await fb.getDoc(fb.doc(db, ROOT, 'invites', s.code));
+      const want = { sid: s.id, name: cleanName(s.name), email };
+      const cur = d.exists() ? d.data() : null;
+      if (!cur || cur.sid !== want.sid || cur.name !== want.name || cur.email !== want.email)
+        await fb.setDoc(fb.doc(db, ROOT, 'invites', s.code), want);
+    } catch (e) { console.error('invite check', s.code, e); inviteChecked.delete(s.code); }
+  }
+}
 function cleanupInvites() { // 가입을 마친 레슨생의 초대코드는 지운다
   for (const s of Object.values(S.students)) if (s.uid && s.code && !cleaned.has(s.id)) {
     cleaned.add(s.id); cloudDel('invites', s.code); fb.updateDoc(fb.doc(db, ROOT, 'students', s.id), { code: null }).catch(() => {});
@@ -520,7 +537,7 @@ const ERR = {
   'permission-denied': '권한이 없어요',
   'unavailable': '인터넷 연결을 확인해 주세요',
   'app/no-user': '가입된 아이디가 없어요. 처음이라면 "초대코드로 가입"을 눌러 주세요',
-  'app/bad-code': '초대코드를 다시 확인해 주세요',
+  'app/bad-code': '이 초대코드를 찾을 수 없어요. 원장쌤이 레슨 출석 앱을 한 번 열면 코드가 다시 준비돼요. 그래도 안 되면 새 초대코드를 받아 주세요',
 };
 const errMsg = e => ERR[e?.code] || e?.message || '문제가 생겼어요';
 let toastT;
@@ -613,6 +630,7 @@ function adminView() {
   else if (S.tab === 'settings') body = settingsTab();
   else body = todayTab(L);
   const T = (k, label, icon, badge) => `<button class="${S.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${icon}${label}${badge ? `<span class="badge">${badge}</span>` : ''}</button>`;
+  if (!CLOUD) body = `<div class="alert acc" style="margin-top:8px"><div class="t">데모 모드</div><div style="font-size:13px">Firebase에 연결되지 않아 이 기기에만 저장돼요. 여기서 만든 초대코드는 다른 폰에서 쓸 수 없어요.</div></div>` + body;
   return body + `<nav class="tabs"><div class="in">${T('today', '출석', ICON.today, payCount)}${T('students', '레슨생', ICON.people)}${T('money', '정산', ICON.won)}${T('settings', '설정', ICON.gear)}</div></nav>`;
 }
 function alertsHTML(L) {

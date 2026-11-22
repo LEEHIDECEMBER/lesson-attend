@@ -1,5 +1,5 @@
 // 앱을 고쳐서 배포할 때마다 숫자를 올리기 (옛 캐시 정리용)
-const CACHE = 'lesson-attend-v5';
+const CACHE = 'lesson-attend-v6';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
