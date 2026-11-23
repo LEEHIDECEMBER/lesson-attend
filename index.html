@@ -175,7 +175,7 @@ const ADMIN_EMAILS = ['jin@naver.com', 'deuk@naver.com'];  // 보안 규칙의 �
 const FB_VER = '13.2.0';
 const ROOT = 'apps/attend';              // Firestore 안에서 이 앱의 자리 (#01의 schedules와 안 겹침)
 const LOGIN_DOMAIN = 'lesson-attend.app'; // 레슨생 계정용 가상 이메일 도메인 (메일은 안 보냄)
-const APP_VER = '1.4.1';
+const APP_VER = '1.4.2';
 const SCHED_DOC = ['schedules', 'main']; // #01 레슨 시간표 문서
 const CLOUD = !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && !/여기/.test(FIREBASE_CONFIG.apiKey));
 
@@ -194,7 +194,8 @@ const fmtYM = ym => `${ym.slice(0,4)}년 ${+ym.slice(5)}월`;
 const shiftYM = (ym, n) => { const d = new Date(+ym.slice(0,4), +ym.slice(5) - 1 + n, 1); return `${d.getFullYear()}-${pad(d.getMonth()+1)}`; };
 const won = n => (Number(n) || 0).toLocaleString('ko-KR') + '원';
 const ts = v => v == null ? Date.now() : (typeof v === 'number' ? v : (v.toMillis ? v.toMillis() : 0));
-const byName = (a, b) => a.name.localeCompare(b.name, 'ko');
+const byName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ko');
+const ini = s => { const n = String(s.name || '?'); return n.length > 1 ? n.slice(-2, -1) : n[0]; };
 // 이름 끝의 '님'은 떼고 쓴다 (시간표에 '김민지님'으로 적혀 있어도 아이디·표시는 '김민지')
 const cleanName = s => String(s ?? '').normalize('NFC').trim().replace(/\s+/g, ' ').replace(/\s*님$/, '').trim();
 const hexKey = s => 'n' + Array.from(new TextEncoder().encode(s), b => b.toString(16).padStart(2, '0')).join('');
@@ -291,6 +292,11 @@ async function put(coll, id, data) {
   if (CLOUD) { await fb.setDoc(fb.doc(db, ROOT, coll, id), data, { merge: true }); return; }
   S[coll][id] = { ...(S[coll][id] || {}), ...data, id }; saveLocal(); scheduleRender();
 }
+async function upd(coll, id, data) { // 있는 문서만 고침 (다른 기기가 지운 문서를 반쪽짜리로 되살리지 않게)
+  if (CLOUD) { await fb.updateDoc(fb.doc(db, ROOT, coll, id), data).catch(e => { if (e.code !== 'not-found') throw e; }); return; }
+  if (!S[coll][id]) return;
+  S[coll][id] = { ...S[coll][id], ...data, id }; saveLocal(); scheduleRender();
+}
 async function del(coll, id) {
   if (CLOUD) { await fb.deleteDoc(fb.doc(db, ROOT, coll, id)); return; }
   delete S[coll][id]; saveLocal(); scheduleRender();
@@ -336,7 +342,20 @@ function listen(target, onData) {
   unsubs.push(fb.onSnapshot(target, onData, e => toast('불러오기 실패: ' + errMsg(e))));
 }
 function mapSnap(snap) { const m = {}; snap.forEach(d => m[d.id] = { ...d.data(), id: d.id }); return m; }
-const cleanStudents = m => { for (const v of Object.values(m)) if (v.name) v.name = cleanName(v.name); return m; };
+const cleanStudents = m => {
+  for (const [k, v] of Object.entries(m)) { if (v.name) v.name = cleanName(v.name); if (!v.name) { broken.add(k); delete m[k]; } }
+  return m;
+};
+// 이름 없는 레슨생 문서(다른 기기와 동시에 고치다 반쪽만 남은 것): 화면에서 빼고, 원장 앱이 정리
+const broken = new Set(), brokenDone = new Set();
+async function cleanupBroken() {
+  for (const id of broken) {
+    if (brokenDone.has(id)) continue;
+    brokenDone.add(id);
+    const used = Object.values(S.records).some(r => r.sid === id) || Object.values(S.passes).some(p => p.sid === id);
+    if (!used) await cloudDel('students', id);
+  }
+}
 function subSettings() {
   listen(fb.doc(db, ROOT, 'meta', 'settings'), d => { S.settings = { ...DEF_SETTINGS, ...(d.data() || {}) }; S.loaded.settings = true; if (S.role === 'admin') syncFromSchedule(); scheduleRender(); });
 }
@@ -344,7 +363,8 @@ const cleaned = new Set();
 function subAdmin() {
   subSettings();
   for (const c of ['students', 'records', 'passes'])
-    listen(fb.collection(db, ROOT, c), snap => { S[c] = c === 'students' ? cleanStudents(mapSnap(snap)) : mapSnap(snap); if (c === 'students') { S.loaded.students = true; cleanupInvites(); ensureInvites(); syncFromSchedule(); } scheduleRender(); });
+    listen(fb.collection(db, ROOT, c), snap => { S[c] = c === 'students' ? cleanStudents(mapSnap(snap)) : mapSnap(snap); S.loaded[c] = true; if (c === 'students') { S.loaded.students = true; cleanupInvites(); ensureInvites(); syncFromSchedule(); }
+      if (S.loaded.records && S.loaded.passes) cleanupBroken(); scheduleRender(); });
   // #01 레슨 시간표의 수강생 명단을 실시간으로 받아서 자동 추가
   unsubs.push(fb.onSnapshot(fb.doc(db, ...SCHED_DOC), d => { S.sched = d.exists() ? d.data() : { students: [] }; S.schedErr = ''; syncFromSchedule(); scheduleRender(); },
     e => { S.schedErr = errMsg(e); scheduleRender(); }));
@@ -412,7 +432,7 @@ async function syncFromSchedule() {
       let s = all.find(a => a.schedId === schedId);
       if (!s) {
         s = all.find(a => !a.schedId && a.loginKey === nameKey(nm));
-        if (s) { await put('students', s.id, { schedId, schedGone: false }); continue; }
+        if (s) { await upd('students', s.id, { schedId, schedGone: false }); continue; }
         await createStudent({ name: uniqueName(nm), memo: '', schedId });
         added++; continue;
       }
@@ -422,14 +442,14 @@ async function syncFromSchedule() {
         patch.name = nm; patch.loginKey = nameKey(nm);
         if (CLOUD && s.code) await fb.setDoc(fb.doc(db, ROOT, 'invites', s.code), { name: nm }, { merge: true });
       }
-      if (Object.keys(patch).length) await put('students', s.id, patch);
+      if (Object.keys(patch).length) await upd('students', s.id, patch);
     }
     const canTrim = lessons && lessons.length > 0; // 시간표를 제대로 읽었을 때만 정리
     for (const a of Object.values(S.students)) {
       if (!a.schedId || ids.has(a.schedId)) continue;
       const used = a.uid || Object.values(S.records).some(r => r.sid === a.id) || Object.values(S.passes).some(p => p.sid === a.id);
       if (canTrim && !used) { await cloudDel('invites', a.code); await del('students', a.id); continue; } // 자동으로 들어왔다가 쓴 적 없는 사람(상담만 등)은 정리
-      if (!a.schedGone) await put('students', a.id, { schedGone: true });
+      if (!a.schedGone) await upd('students', a.id, { schedGone: true });
     }
   } catch (e) { console.error(e); toast('시간표 명단 가져오기 실패: ' + errMsg(e)); }
   finally { syncBusy = false; }
@@ -677,7 +697,7 @@ function todayTab(L) {
       ? `<span class="act c-${c}">${r.status === 'present' || r.status === 'makeup' ? CHECK_SVG : ''}${ST[r.status].t}</span>`
       : `<button class="act go" data-act="quick" data-sid="${s.id}" data-slot="${ls ? esc(String(ls.id)) : ''}" data-mk="${ls && ls.cycle === 'once' ? 1 : ''}">${ls && ls.cycle === 'once' ? '보강' : '출석'}</button>`;
     return `<div class="row" data-act="openRec" data-sid="${s.id}" ${r ? `data-rid="${r.id}"` : ''} data-slot="${ls ? esc(String(ls.id)) : ''}" data-mk="${ls && ls.cycle === 'once' ? 1 : ''}" role="button">
-        <div class="avatar ${c ? 'c-' + c : ''}">${r && (r.status === 'present' || r.status === 'makeup') ? CHECK_SVG : esc(s.name.slice(-2, -1) || s.name[0])}</div>
+        <div class="avatar ${c ? 'c-' + c : ''}">${r && (r.status === 'present' || r.status === 'makeup') ? CHECK_SVG : esc(ini(s))}</div>
         <div class="main"><div class="name">${esc(s.name)}${of > 1 ? `<span class="slot">${n}/${of}</span>` : ''} ${badges(l, s)}</div>
           <div class="meta">${when ? `<b style="color:var(--acc-ink)">${esc(when)}</b> · ` : ''}${esc(summary(l))}${r && r.by === 'student' ? ' · 본인 체크' : ''}${r && r.note ? ' · 📝' : ''}</div></div>
         ${right}</div>`;
@@ -705,7 +725,7 @@ function studentsTab(L) {
   const rows = shown.map(s => {
     const l = L[s.id];
     return `<button class="row" data-act="openStudent" data-sid="${s.id}">
-      <div class="avatar ${s.active === false ? 'off' : ''}">${esc(s.name.slice(-2, -1) || s.name[0])}</div>
+      <div class="avatar ${s.active === false ? 'off' : ''}">${esc(ini(s))}</div>
       <div class="main"><div class="name">${esc(s.name)} ${badges(l, s)}</div>
         <div class="meta">${esc(summary(l))}${s.uid ? '' : ' · <span style="color:var(--acc-ink)">가입 전</span>'}${s.schedGone ? ' · 시간표에 정규 수업 없음' : ''}${s.memo ? ' · ' + esc(s.memo) : ''}</div></div>
       <span class="chev">›</span></button>`;
@@ -971,7 +991,7 @@ async function doJoin() {
   if (pw !== pw2) return lerr('비밀번호가 서로 달라요');
   const { sid, name, email } = S.invite;
   if (!CLOUD) {
-    await put('students', sid, { uid: 'demo-' + sid, code: null, demoPw: pw });
+    await upd('students', sid, { uid: 'demo-' + sid, code: null, demoPw: pw });
     S.invite = null; S.loginTab = 'login'; toast('가입 완료! 다음부터는 이름으로 로그인해요');
     return demoLoginAs('student', sid);
   }
@@ -1014,7 +1034,7 @@ async function saveStudent() {
   if (s) {
     const patch = { memo };
     if (!s.uid && (name !== s.name || s.loginKey !== key)) { patch.name = name; patch.loginKey = key; if (CLOUD && s.code) await fb.setDoc(fb.doc(db, ROOT, 'invites', s.code), { name }, { merge: true }); }
-    await put('students', sid, patch); closeSheet(); toast('저장했어요'); return;
+    await upd('students', sid, patch); closeSheet(); toast('저장했어요'); return;
   }
   const id = await createStudent({ name, memo, firstPass: $('#sfirst')?.checked });
   closeSheet(); S.tab = 'students'; S.view = id; render(); scrollTo(0, 0);
@@ -1031,7 +1051,7 @@ async function reissue(sid) {
     await cloudSet('invites', code, { sid, name: s.name, email });
     cleaned.delete(sid);
   }
-  await put('students', sid, { code, email, uid: null, demoPw: null });
+  await upd('students', sid, { code, email, uid: null, demoPw: null });
   toast('새 초대코드를 만들었어요');
 }
 async function delStudent(sid) {
@@ -1090,7 +1110,7 @@ const ACT = {
     if (!date) return toast('날짜를 골라 주세요');
     if (!rid) { closeSheet(); return addRecord(sid, { date, status: st, note, by: 'admin', slot: date === S.date ? slot : '' }); }
     const old = S.records[rid], before = ledger(sid).remaining;
-    await put('records', rid, { date, status: st, note });  // slot은 그대로
+    await upd('records', rid, { date, status: st, note });  // slot은 그대로
     closeSheet(); toast('저장했어요');
     payNotice(sid, before, before - (deducts(st) ? 1 : 0) + (deducts(old.status) ? 1 : 0));
   },
@@ -1099,7 +1119,7 @@ const ACT = {
   savePay: async () => {
     const { sid, pid } = SH, paidAt = val('pdate'), total = Math.round(+val('ptotal')), amount = Math.round(+val('pamt') || 0), memo = val('pmemo');
     if (!paidAt || !(total > 0)) return toast('결제일과 횟수를 확인해 주세요');
-    if (pid) await put('passes', pid, { paidAt, total, amount, memo });
+    if (pid) await upd('passes', pid, { paidAt, total, amount, memo });
     else await put('passes', newId('passes'), { sid, paidAt, total, amount, memo, createdAt: now() });
     closeSheet(); toast(pid ? '저장했어요' : `${S.students[sid]?.name} · ${total}회 수강권 시작!`);
   },
@@ -1114,7 +1134,7 @@ const ACT = {
   },
   copyCode: d => copyText(S.students[d.sid].code),
   reissue: d => reissue(d.sid),
-  toggleActive: async d => { const s = S.students[d.sid]; await put('students', d.sid, { active: s.active === false }); toast(s.active === false ? '다시 수강 중으로 바꿨어요' : '수강 종료로 표시했어요'); },
+  toggleActive: async d => { const s = S.students[d.sid]; await upd('students', d.sid, { active: s.active === false }); toast(s.active === false ? '다시 수강 중으로 바꿨어요' : '수강 종료로 표시했어요'); },
   delStudent: d => delStudent(d.sid),
   exportData,
   clearSkip: async () => { await saveSettings({ syncSkip: [] }); syncFromSchedule(); },
